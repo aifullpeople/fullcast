@@ -40,8 +40,14 @@ this pass real distance from the code, not a new character.
 - Read `tech-lead/design.md` (Component Overview — this pass also checks structural
   fit, not just line-level quality) and `context_project.md` (existing conventions —
   review against what this codebase already does, not outside taste).
-- Determine `stack.primary_language` from `.aifullpeople/config.yaml` to know which
-  `guidelines/<stack>/*.md` apply alongside the shared `guidelines/*.md`.
+- Determine `stack.primary_language` (and `guidance_skill`/`guidance_source`) from
+  `.aifullpeople/config.yaml` to resolve this stack's concrete guidance source
+  (architecture.md §5): by default the installed `<primary_language>-pro` skill
+  (e.g. `golang-pro` for Go) under `.agents/skills/`, read exactly as it ships —
+  its `SKILL.md` plus whichever `references/*.md` bear on the category under
+  review. Falls back to a project-authored `guidelines/<primary_language>/` only
+  when `guidance_source: guidelines` is set. Always load alongside the 5 shared
+  `guidelines/*.md` at the repo root (stack-agnostic).
 - No lock acquisition of its own — it's read-only on everything except the report file
   it writes and (only with explicit approval, see Step 5) the same kind of edit
   `aifullpeople-developer` already makes under that role's own lock.
@@ -85,11 +91,14 @@ severity definitions): `references/review-criteria.md`. Load it now.
 
 ## Always / Never
 
-Always: ground every finding in a specific `guidelines/*.md` rule or a concrete
-observed risk, not taste; cite file:line; include at least one positive observation
-when one exists; keep the report advisory — no verdict field, no blocking status.
+Always: ground every finding in a specific `guidelines/*.md` rule, the resolved stack
+guidance skill (or `guidelines/<stack>/` when `guidance_source: guidelines`), or a
+concrete observed risk, not taste; cite file:line; include at least one positive
+observation when one exists; keep the report advisory — no verdict field, no blocking
+status.
 
 Never: block, reject, or auto-fix anything; treat a finding as resolved without being
-told; invent a guideline that isn't in `guidelines/`; route findings through
+told; invent a rule that isn't in `guidelines/` or the resolved stack guidance skill;
+route findings through
 `aifullpeople-developer-fix-runner` (that skill is for `evaluator` rejections only);
 nitpick something a Gate (lint/format) already enforces mechanically.

@@ -30,12 +30,22 @@
       "properties": {
         "primary_language": {
           "type": "string",
-          "description": "Selects guidelines/<primary_language>/ (architecture.md §5). Must match a folder that exists under the installed framework's guidelines/."
+          "description": "Selects this stack's concrete guidance source (architecture.md §5). By default, the installed Agent Skill named '<primary_language>-pro' under .agents/skills/ (e.g. \"go\" -> golang-pro), used exactly as it ships. Override the skill name with guidance_skill, or opt out of skills entirely with guidance_source."
+        },
+        "guidance_skill": {
+          "type": "string",
+          "description": "Optional. Name of the installed Agent Skill (under .agents/skills/) that supplies this stack's concrete guidance -- error handling, naming, testing, anti-patterns, idioms -- read as-is, never rewritten by the framework. Defaults to '<primary_language>-pro' (e.g. golang-pro for primary_language: go) when omitted. Ignored when guidance_source is \"guidelines\"."
+        },
+        "guidance_source": {
+          "type": "string",
+          "enum": ["skill", "guidelines"],
+          "default": "skill",
+          "description": "Where this stack's concrete guidance comes from. \"skill\" (default): the '<primary_language>-pro' Agent Skill (or guidance_skill override), used exactly as installed -- see architecture.md §5. \"guidelines\": a project-authored guidelines/<primary_language>/ directory instead -- fully custom, not shipped by the framework; use for a stack with no *-pro skill installed, or to hand-roll the rules yourself."
         },
         "guidelines_exclude": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Optional. Names of shared guideline categories to skip loading (e.g. [\"naming-conventions\"]). Default behavior with this omitted: load all 5 shared root guidelines + everything in guidelines/<primary_language>/."
+          "description": "Optional. Names of the 5 shared root guideline categories to skip loading (solid-principles, anti-patterns, testing, naming-conventions, error-handling) -- these stay stack-agnostic and load by default regardless of guidance_source. Does not affect guidance_skill or a custom guidelines/<primary_language>/."
         }
       }
     },

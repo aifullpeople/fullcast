@@ -104,7 +104,8 @@ Gate command discovery order, what counts as "done", deviation tracking — live
 5. **Code review (feature scope).** Once full-suite Gates are green, invoke
    `aifullpeople-developer-codereview` with `feature=<this feature>` (as its own
    subagent, per architecture.md §17). It reads code quality against
-   `guidelines/*.md` — something no Gate and no `evaluator` walk checks (§20). Purely
+   `guidelines/*.md` and the resolved stack guidance skill (§5) — something no Gate
+   and no `evaluator` walk checks (§20). Purely
    advisory: it produces a report, never blocks. Carry its findings into Step 6's
    checkpoint rather than pausing separately for them.
 

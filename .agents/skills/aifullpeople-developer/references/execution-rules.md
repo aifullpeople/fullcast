@@ -53,8 +53,13 @@ order:
    there (written by a prior task or by `tech-lead` while drafting `contract.md`), use
    it. Don't rediscover.
 2. `contract.md`'s "Quality gates" section for this feature, if more specific.
-3. `guidelines/<primary_language>/gates.md` (from the installed framework) for the
-   stack's conventional tool per Gate.
+3. The resolved stack guidance skill (`.agents/skills/<guidance_skill or
+   "<primary_language>-pro">/SKILL.md`, architecture.md §5) for any Gate command it
+   states explicitly — e.g. golang-pro's Core Workflow names `go vet ./...`,
+   `golangci-lint run`, and `-race` tests. Use `guidelines/<primary_language>/gates.md`
+   instead only when `stack.guidance_source: guidelines` is configured. Skills rarely
+   cover every Gate (dependency-boundary and dead-code commonly aren't named) —
+   whatever isn't stated falls through to step 4.
 4. Only if still unresolved: inspect the project directly (`Makefile`, `package.json`
    equivalent for the stack) — then **append the discovered command to
    `context_project.md`** so no later task repeats this discovery.

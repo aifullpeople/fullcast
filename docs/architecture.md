@@ -18,6 +18,14 @@
 > obrigatória por padrão (`config.yaml: human_in_the_loop`), separada dos Gates de qualidade
 > (julgamento humano vs. ferramenta automática). Descoberta rodando o exemplo `wordcount`
 > end-to-end: o pipeline original rodava autônomo do início ao fim sem nenhum checkpoint.
+> v8: guidance de stack deixa de ser só `guidelines/<stack>/*.md` escrito à mão — vira
+> resolvido, por padrão, a partir de uma Agent Skill instalada `<primary_language>-pro` (ex.:
+> `golang-pro`, movida de `exemplos/` pra `.agents/skills/stack/`, com symlink de referência em
+> `.agents/skills/`), usada exatamente como instalada.
+> `guidelines/<primary_language>/` continua existindo como opção — só passa a ser o caminho
+> explicitamente customizado (`stack.guidance_source: guidelines`), não mais o default nem algo
+> que o framework mantém pronto por stack. `guidelines/go/` foi removido; os 5 arquivos
+> compartilhados da raiz continuam valendo sempre, independente da fonte escolhida.
 > v8: `.aifullpeople/` reorganizado por papel (`pm/`, `features/<id>/{tech-lead,developer,evaluator}/`
 > — §12) em vez de por tipo de arquivo, porque ficava difícil ver quem produziu o quê. Tasks
 > ganham campo `phase` no `state.json` e nos relatórios do developer (§13) — as fases que o
@@ -205,48 +213,48 @@ sdd-framework-aifullpeople/
 │           ├── SKILL.md
 │           └── references/
 │               └── evaluation-checklist.md
-├── guidelines/
+├── guidelines/                     # só os 5 compartilhados — stack-agnóstico, carrega sempre
 │   ├── solid-principles.md        # compartilhado DE VERDADE — conceito de design, não sintaxe
 │   ├── anti-patterns.md           # compartilhado: só os universais (god object, número mágico, copy-paste, otimização prematura)
 │   ├── testing.md                 # compartilhado: filosofia só (pirâmide de teste, o que mockar, arrange-act-assert) — zero nome de ferramenta
-│   ├── naming-conventions.md      # compartilhado: só o preâmbulo universal (consistência, nome com significado, sem abreviação) — o grosso é por stack
-│   ├── error-handling.md          # compartilhado: só a filosofia (falhar rápido, nunca engolir erro, logar com contexto) — a mecânica é por stack
-│   ├── go/
-│   │   ├── go.md                  # overview do stack, linka os arquivos abaixo + o layout de pacotes (cmd/internal/pkg)
-│   │   ├── error-handling.md      # CONCRETO: error values, wrapping com %w, errors.Is/As, panic só em caso irrecuperável
-│   │   ├── naming-conventions.md  # CONCRETO: MixedCaps, sem stutter (user.Service, não user.UserService), receiver curto
-│   │   ├── testing.md             # CONCRETO: table-driven tests, testify vs. stdlib, subtests com t.Run
-│   │   ├── anti-patterns.md       # CONCRETO: ignorar error retornado, panic como controle de fluxo, `any`/`interface{}` em excesso
-│   │   └── gates.md                # ferramenta de cada Gate (§8) pra Go — ver tabela do §8
-│   ├── java/                       # backend — os 5 compartilhados fazem sentido como estão,
-│   │   └── (mesma estrutura de go/, com o conteúdo concreto de Java) # só espelha
-│   └── nextjs/                     # frontend — os 5 ainda se aplicam, mas não bastam sozinhos
-│       ├── nextjs.md                   # overview do stack
-│       ├── error-handling.md           # CONCRETO: error boundaries, estados de erro na UI
-│       ├── naming-conventions.md       # CONCRETO: PascalCase de componente, hooks use*
-│       ├── testing.md                  # CONCRETO: Testing Library, mock de rede vs. mock de módulo
-│       ├── anti-patterns.md            # CONCRETO: prop drilling, useEffect como substituto de derived state
-│       ├── gates.md                    # ferramenta de cada Gate (§8) pra Next.js/TS
-│       ├── component-patterns.md       # EXTRA — categoria que Go/Java não têm, e tudo bem ter
-│       ├── accessibility.md            # EXTRA
-│       └── state-management.md         # EXTRA
+│   ├── naming-conventions.md      # compartilhado: só o preâmbulo universal (consistência, nome com significado, sem abreviação)
+│   ├── error-handling.md          # compartilhado: só a filosofia (falhar rápido, nunca engolir erro, logar com contexto)
+│   └── <primary_language>/         # OPCIONAL — só existe quando um projeto escolhe
+│                                    # `stack.guidance_source: guidelines` em vez de uma skill
+│                                    # (§5.2). Não é mais mantido/populado pelo framework.
+├── .agents/skills/
+│   ├── stack/                      # skills de linguagem/stack agrupadas, separadas das
+│   │   │                            # aifullpeople-* — todo *-pro futuro (java-pro, nextjs-pro)
+│   │   │                            # mora aqui, conteúdo real
+│   │   └── golang-pro/              # a fonte concreta de guidance pra Go, por padrão (§5.2) —
+│   │       ├── SKILL.md             # skill de terceiro (github.com/Jeffallan), usada como está,
+│   │       └── references/          # sem edição do framework: concurrency, generics, interfaces,
+│   │                                 # testing, project-structure
+│   ├── golang-pro -> stack/golang-pro   # symlink de referência — Claude Code só descobre
+│   │                                       # skill em .agents/skills/<nome>/, não em subpasta
+│   └── aifullpeople-*/              # as skills do próprio framework (ver árvore completa acima)
+└── .claude/skills/                   # espelha .agents/skills/ inteiro via symlink, nos dois
+                                       # níveis: .claude/skills/stack -> ../../.agents/skills/stack
+                                       # (organização) e .claude/skills/golang-pro ->
+                                       # ../../.agents/skills/golang-pro (o que o Claude Code
+                                       # efetivamente escaneia)
 ├── schema/                         # documentação da forma do state/config — não é validado
 │   ├── config.schema.json          # por script; é referência pro modelo ler antes de editar
 │   └── state.schema.json
 └── templates/
 ```
 
-Sua dúvida tinha fundamento: `error-handling.md` e `naming-conventions.md` **não são majoritariamente
-compartilháveis** — Go trata erro como valor de retorno (sem exceção), Java tem checked/unchecked
-exception, JS tem try/catch + rejeição de Promise; nomenclatura idiomática de Go (`MixedCaps`, sem
-`Get` prefixo, sem stutter de pacote) não tem nada a ver com a de Java (`PascalCase` de classe,
-nomes descritivos longos). Por isso o arquivo da raiz, pra esses dois casos, fica **fino de
-propósito** — só a filosofia que atravessa qualquer stack — e quem carrega a regra concreta é o
-arquivo de **mesmo nome** dentro de `go/`, `java/`, `nextjs/`. Já `solid-principles.md` (princípio
-de design, não sintaxe) e a parte universal de `anti-patterns.md` (god object, código duplicado,
-otimização prematura) são conceituais o bastante pra serem compartilhados de verdade, com conteúdo
-substancial na raiz. `testing.md` fica no meio: a raiz cobre filosofia (o que testar, quanto
-mockar), cada stack cobre a ferramenta (Go: `testify`/stdlib; Java: JUnit/Mockito).
+`error-handling.md` e `naming-conventions.md` **não são majoritariamente compartilháveis** — Go
+trata erro como valor de retorno (sem exceção), Java tem checked/unchecked exception, JS tem
+try/catch + rejeição de Promise; nomenclatura idiomática de Go (`MixedCaps`, sem `Get` prefixo, sem
+stutter de pacote) não tem nada a ver com a de Java (`PascalCase` de classe, nomes descritivos
+longos). Por isso o arquivo da raiz, pra esses dois casos, fica **fino de propósito** — só a
+filosofia que atravessa qualquer stack — e a regra concreta vem de fora (ver 5.2). Já
+`solid-principles.md` (princípio de design, não sintaxe) e a parte universal de `anti-patterns.md`
+(god object, código duplicado, otimização prematura) são conceituais o bastante pra serem
+compartilhados de verdade, com conteúdo substancial na raiz. `testing.md` fica no meio: a raiz
+cobre filosofia (o que testar, quanto mockar), o concreto (Go: `testify`/stdlib; Java:
+JUnit/Mockito) vem de 5.2.
 
 ### 5.1 Anatomia de cada skill
 
@@ -263,6 +271,36 @@ vamos usar de fato pra montar cada uma na Fase 1 — não confiar só na minha m
   modelo, sem wrapper.
 - **`assets/`** — templates literais (esqueleto de `design.md`, `tasks.md`, `brief.md`, relatório
   de task) que a skill copia e preenche, em vez do modelo redigitar a estrutura todavez.
+
+### 5.2 De onde vem o guidance concreto de cada stack
+
+v8 (ver changelog): deixou de ser `guidelines/<stack>/*.md` mantido à mão pelo framework — passou a
+ser **resolvido**, por `.aifullpeople/config.yaml: stack`:
+
+- **`guidance_source: skill`** (default) — usa a Agent Skill instalada
+  `<primary_language>-pro` (`guidance_skill` sobrescreve o nome quando não segue a convenção). A
+  skill é lida **exatamente como instalada** — este framework nunca edita o conteúdo dela. Todo
+  skill de stack (Go, Java, Next.js, etc.) mora fisicamente em `.agents/skills/stack/<nome>-pro/`
+  — pasta própria, separada das `aifullpeople-*`, pra não misturar "skill do framework" com "skill
+  de linguagem". `.agents/skills/<nome>-pro` é só um **symlink de referência** pra dentro de
+  `stack/` (necessário porque a convenção de descoberta do Claude Code é flat, um nível só —
+  não escaneia subpasta), espelhado em `.claude/skills/<nome>-pro` do mesmo jeito que as
+  `aifullpeople-*` já são. Hoje só existe uma: `golang-pro` (terceiro, github.com/Jeffallan,
+  movida de `exemplos/` na v8), cobrindo Go via `SKILL.md` (Core Workflow, Constraints) +
+  `references/{concurrency,generics,interfaces,testing,project-structure}.md`. Java/Next.js ainda
+  não têm skill equivalente instalada — usar `guidance_source: guidelines` pra esses até existir
+  uma `java-pro`/`nextjs-pro` (que, quando chegar, entra em `stack/` do mesmo jeito).
+- **`guidance_source: guidelines`** — volta ao mecanismo antigo: `guidelines/<primary_language>/`
+  escrito à mão no próprio projeto. Deixou de vir pronto com o framework (não existe mais
+  `guidelines/go/` nem esqueleto pra `java/`/`nextjs/`) — é o caminho **customizado**, pra quem
+  não tem (ou não quer) uma skill `*-pro` pra aquele stack.
+
+Nenhuma skill do framework (`aifullpeople-tech-lead`, `aifullpeople-developer`,
+`aifullpeople-developer-codereview`) assume a forma exata do que a skill de stack expõe — leem o
+que tiver (`SKILL.md` + `references/`), do mesmo jeito que já liam "o que tiver na pasta" no
+mecanismo antigo. O único acoplamento é a convenção de nome (`<primary_language>-pro`) e a
+resolução via `config.yaml`. Os 5 compartilhados da raiz **sempre** carregam, com as duas fontes —
+eles não competem com o que a skill de stack cobre, complementam.
 
 ## 6. Máquina de estado canônica
 
@@ -352,7 +390,7 @@ dele), com "spec-writer"/`spec.md`/`plan.md` do texto original traduzidos pra `t
 Os 6 que você listou, na mesma ordem — a ordem já é a certa (do mais barato/rápido de falhar pro
 mais caro/amplo, então nada roda à toa se algo básico já quebrou):
 
-| # | Gate | O que checa | Ferramenta (documentada em `guidelines/<stack>/gates.md`, exemplo Go) |
+| # | Gate | O que checa | Ferramenta (§5.2: comando declarado na skill de stack, ex. `golang-pro` pra Go, ou em `guidelines/<stack>/gates.md` quando `guidance_source: guidelines`) |
 |---|---|---|---|
 | 1 | Compilação/contrato | O projeto compila; contratos (schema de API, proto, etc.) são válidos | `go build ./...`, validação de contrato se houver |
 | 2 | Lint | Estilo e problemas estáticos | `golangci-lint run` (ESLint é o equivalente em JS/TS — o nome do gate é genérico, a ferramenta é por stack) |
@@ -554,24 +592,25 @@ de ler de relance quem tinha feito o quê):
                 └── tokens.md
 ```
 
-`guidelines/` **não** é copiado para dentro de `.aifullpeople/` — fica referenciado a partir do
-framework instalado (`.agents/skills/../guidelines/`, ou caminho equivalente conforme a
-ferramenta), pra evitar duas cópias divergindo. Não precisa enumerar quais guidelines carregar:
-por padrão é sempre os 5 arquivos compartilhados da raiz + **todos** os arquivos de
-`guidelines/<primary_language>/` — `guidelines_exclude` é só pra quem quiser desligar uma
-categoria específica (ex.: pular `anti-patterns` num projeto legado que não vai limpar isso agora).
+Nem `guidelines/` nem a skill de stack são copiados pra dentro de `.aifullpeople/` — ficam
+referenciados a partir do framework instalado (`.agents/skills/`, `guidelines/`, ou caminho
+equivalente conforme a ferramenta), pra evitar cópias divergindo. Os 5 compartilhados da raiz
+carregam sempre por padrão; `guidelines_exclude` é só pra quem quiser desligar uma categoria
+específica desses 5 (ex.: pular `anti-patterns` num projeto legado que não vai limpar isso agora).
+O concreto por stack é resolvido como o §5.2 descreve — skill `<primary_language>-pro` por padrão,
+`guidelines/<primary_language>/` só quando `guidance_source: guidelines` for configurado
+explicitamente.
 
-**A pasta de stack não é um schema fixo de 5 arquivos espelhados — é aberta.** "Carrega todos os
-arquivos da pasta" já significa isso: pra Go e Java (backend), os 5 compartilhados dão conta e a
-pasta só espelha (mesmo nome, conteúdo concreto). Pra frontend, os 5 ainda importam (SOLID,
-anti-patterns, error-handling e naming ainda fazem sentido em React/Next.js — só com exemplo
-diferente), mas não cobrem tudo que o paradigma precisa — daí a pasta `nextjs/` do exemplo acima
-ter `component-patterns.md`, `accessibility.md`, `state-management.md`, que não existem pra Go/Java
-porque backend não tem esse conceito. Nenhuma skill (`aifullpeople-tech-lead`,
-`aifullpeople-developer`, `aifullpeople-developer-codereview`) hardcoda quais arquivos esperar — todas
-leem "o que tiver na pasta", então essa extensão não exige mudar skill nenhuma, só popular os
-arquivos quando o stack existir de verdade (ainda não populamos `java/`/`nextjs/` com conteúdo —
-§16 já registrava isso; ficam como esqueleto até serem precisos de verdade).
+**Quando `guidance_source: guidelines`, a pasta de stack não é um schema fixo de 5 arquivos
+espelhados — é aberta.** "Carrega todos os arquivos da pasta" já significa isso: pra Go e Java
+(backend), os 5 compartilhados dariam conta e a pasta só espelharia (mesmo nome, conteúdo
+concreto). Pra frontend, os 5 ainda importam (SOLID, anti-patterns, error-handling e naming ainda
+fazem sentido em React/Next.js — só com exemplo diferente), mas não cobrem tudo que o paradigma
+precisa — daí uma eventual pasta `nextjs/` ter também `component-patterns.md`,
+`accessibility.md`, `state-management.md`, que não existem pra Go/Java porque backend não tem esse
+conceito. Nenhuma skill (`aifullpeople-tech-lead`, `aifullpeople-developer`,
+`aifullpeople-developer-codereview`) hardcoda quais arquivos esperar — todas leem "o que tiver",
+seja na pasta ou na skill de stack.
 
 `config.yaml` completo (junta o que apareceu em §8 e aqui):
 
@@ -581,7 +620,9 @@ methodology: aifullpeople     # default para features novas — ver §9
 human_in_the_loop: true       # aprovação obrigatória em cada transição — ver §15
 stack:
   primary_language: go
-  # guidelines_exclude: [naming-conventions]   # opcional — desliga categorias específicas
+  # guidance_skill: golang-pro    # opcional — sobrescreve a convenção "<primary_language>-pro"
+  # guidance_source: skill        # "skill" (default) | "guidelines" — ver §5.2
+  # guidelines_exclude: [naming-conventions]   # opcional — desliga uma categoria dos 5 compartilhados
 gates:
   compile: true
   lint: true
@@ -646,8 +687,8 @@ uma segunda fonte da verdade — se algum dia divergir, `state.json` que está c
    cobertura de AC. `developer` já nasce rodando os 6 Gates (§8) por task + full-suite; `evaluator` já
    nasce percorrendo `contract.md` e dependendo dos Gates verdes antes de checar critérios de
    aceite. Usar a skill `skill-creator` pra montar/validar a anatomia de cada uma (§5.1) em vez de
-   confiar só na convenção descrita aqui. `guidelines/` com os 5 arquivos compartilhados +
-   `go/{go,error-handling,naming-conventions,testing,anti-patterns,gates}.md`.
+   confiar só na convenção descrita aqui. `guidelines/` com os 5 arquivos compartilhados; Go
+   concreto vem da skill `golang-pro` (§5.2), não mais de `guidelines/go/`.
 2. **Fase 2** — `aifullpeople-set-methodology` + lock por feature (§9) valendo de verdade, mesmo
    com um único pack existindo — valida o mecanismo antes de precisar dele.
 3. **Fase 3** — validar a instalação real em Codex e Copilot (não só a convenção de pastas) e
@@ -722,8 +763,9 @@ pergunta-a-pergunta, HiTL continua exigindo aprovação do resultado final.
   "fresh environment item" em `contract-rules.md`, adicionada por causa disso).
 - Lista completa de stacks além de Go/Java/Next.js (§5) — adiciono pastas conforme vocês forem
   precisando.
-- Conteúdo de fato dos 5 guidelines compartilhados e dos arquivos concretos de `go/` — próximo
-  passo depois deste doc.
+- Conteúdo de fato dos 5 guidelines compartilhados — próximo passo depois deste doc. O concreto de
+  Go está resolvido via `golang-pro` (§5.2); falta uma skill `*-pro` (ou `guidelines/<stack>/`
+  customizado) equivalente pra Java/Next.js quando esses stacks entrarem de verdade.
 - Confirmar se entra o 7º Gate de segurança (§8) e se algum dos 6 originais deveria ser
   soft (advisório, não bloqueia `done`) em vez de hard-fail — comecei todos como hard por padrão.
 - Formato exato do "script próprio do projeto" (Gate 4, §8): convenção de onde ele mora
@@ -756,10 +798,11 @@ pergunta-a-pergunta, HiTL continua exigindo aprovação do resultado final.
   gitignored?~~ — **resolvido na Fase 1: versionar.** `aifullpeople-developer` comita
   `state.json` + o relatório da task junto do código, no mesmo commit por task (SKILL.md do
   `developer`, passo 3.8) — cada commit já é auto-documentado.
-- ~~Cache de comando de Gate descoberto~~ — **resolvido na Fase 1:** ordem de resolução
-  documentada em `aifullpeople-developer/references/execution-rules.md` ("Gate command
-  discovery"): `context_project.md` cacheado → `contract.md` da feature →
-  `guidelines/<stack>/gates.md` → descoberta direta no projeto (e só então cacheia de volta).
+- ~~Cache de comando de Gate descoberto~~ — **resolvido na Fase 1, ajustado na v8:** ordem de
+  resolução documentada em `aifullpeople-developer/references/execution-rules.md` ("Gate command
+  discovery"): `context_project.md` cacheado → `contract.md` da feature → skill de stack resolvida
+  (`golang-pro` pra Go, ou `guidelines/<stack>/gates.md` quando `guidance_source: guidelines`) →
+  descoberta direta no projeto (e só então cacheia de volta).
 - **HiTL (§15) — granularidade fina não decidida:** hoje o checkpoint é por estágio (uma
   aprovação por brief/PRD/bundle do tech-lead/handoff do developer/veredito do Evaluator), nunca por
   task. Se algum projeto quiser aprovação por task também (mais rígido que o default), isso

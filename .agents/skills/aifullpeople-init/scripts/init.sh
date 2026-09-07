@@ -51,7 +51,9 @@ human_in_the_loop: true       # required approval at every stage transition — 
                                # set false only to opt into fully autonomous runs
 stack:
   primary_language: $STACK
-  # guidelines_exclude: [naming-conventions]   # optional — turn off specific categories
+  # guidance_skill: golang-pro    # optional — override the "<primary_language>-pro" convention
+  # guidance_source: skill        # "skill" (default) | "guidelines" — see architecture.md §5
+  # guidelines_exclude: [naming-conventions]   # optional — turn off a shared root category
 gates:
   compile: true
   lint: true

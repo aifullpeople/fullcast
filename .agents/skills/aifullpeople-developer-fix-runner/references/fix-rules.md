@@ -50,8 +50,9 @@ inventing structure `design.md` never described.
 
 Discover Gate commands the same way `aifullpeople-developer` does — check
 `context_project.md`'s "Gate commands" section first, then `contract.md`'s "Quality
-gates" section, then `guidelines/<stack>/gates.md`, only falling back to fresh
-discovery (and caching what's found) as a last resort. Retry budget: 3 attempts on a
+gates" section, then the resolved stack guidance skill's `SKILL.md` (or
+`guidelines/<stack>/gates.md` when `stack.guidance_source: guidelines`), only falling
+back to fresh discovery (and caching what's found) as a last resort. Retry budget: 3 attempts on a
 red Gate, same tri-state semantics as `aifullpeople-developer/references/
 execution-rules.md` (hard-fail/soft-fail/pre-existing).
 
