@@ -1,0 +1,934 @@
+# Arquitetura do sdd-framework-aifullpeople
+
+> Documento de design (meta-PRD do próprio framework). Nada aqui foi implementado ainda — este
+> arquivo alinha decisões antes de criar qualquer skill, template ou schema.
+> v3: portabilidade multi-agente, papel de Evaluator, lock de metodologia por feature, guidelines por
+> stack, personas do Aranhaverso, relatórios em 3 níveis (task/feature/projeto), heurística de
+> tokens v1.
+> v4: Gates de qualidade (§8), `context_project.md` (§11), revisão crítica final — `state.json`
+> ganha `real_difficulty`/`tokens_estimated`, `config.yaml` consolidado, gaps sinalizados em §16
+> (Batch Mode, Foundation Features, versionamento de `.aifullpeople/` no git).
+> v5: `contract.md` (§7) — terceiro artefato do `tech-lead`, contrato de comportamento com gate de
+> cobertura de AC; unifica com Gates (§8) e `context_project.md` (§11) em vez de duplicar conceito.
+> v6: Fase 1 implementada — as 7 skills, scripts, schemas e guidelines existem de verdade em
+> `.agents/skills/`, `guidelines/`, `schema/` (symlinked em `.claude/skills/`). 3 itens do §16
+> resolvidos na implementação (Foundation Features, versionamento de `.aifullpeople/` no git,
+> cache de comando de Gate) — ver §16 para o que ainda ficou em aberto.
+> v7: Human-in-the-loop (§15) — aprovação humana explícita em cada transição de estágio,
+> obrigatória por padrão (`config.yaml: human_in_the_loop`), separada dos Gates de qualidade
+> (julgamento humano vs. ferramenta automática). Descoberta rodando o exemplo `wordcount`
+> end-to-end: o pipeline original rodava autônomo do início ao fim sem nenhum checkpoint.
+> v8: `.aifullpeople/` reorganizado por papel (`pm/`, `features/<id>/{tech-lead,developer,evaluator}/`
+> — §12) em vez de por tipo de arquivo, porque ficava difícil ver quem produziu o quê. Tasks
+> ganham campo `phase` no `state.json` e nos relatórios do developer (§13) — as fases que o
+> tech-lead define em `tasks.md` desapareciam assim que a execução começava.
+> v9: rodado um segundo exemplo (`examples2`, Todo CRUD com HTTP API) com HiTL ligado de
+> verdade — achado e corrigido um gap real: `contract.md` nunca exigia um item de "ambiente
+> fresco" pra feature com persistência em disco, então um bug (diretório não criado) passou
+> por todos os Gates e pelo Evaluator (§16 documenta por quê — nenhum dos dois tinha como pegar).
+> Regra nova em `contract-rules.md`: toda feature com persistência em disco precisa de pelo
+> menos um item de ambiente fresco. Política de bug pós-`done` também resolvida (§16): não
+> reabre, corrige direto com commit explícito.
+> v10: renomeado `qa` → `evaluator` em todo o framework. Três adições, todas do `developer`
+> fazendo passada diferente (não papel novo): lock de execução por PID (§18, evita duas
+> execuções concorrentes na mesma feature/projeto), execução recomendada como subagente por
+> papel (§17), `aifullpeople-developer-codereview` (§20) fechando o gap de code review real
+> (nada consultava `guidelines/*.md` até agora) e `aifullpeople-developer-fix-runner` (§19)
+> pra correção cirúrgica pós-reprovação do `evaluator`, com HiTL obrigatório em cada ciclo.
+> v11: regra de prioridade explícita (§11) — `context_project.md` populado manda; greenfield
+> vazio, quem manda é o que o usuário disser (inclusive estilo de arquitetura, ex.: Clean
+> Architecture), e essa resposta vira a próxima entrada autoritativa. Nova seção
+> "Architecture" no `context_project.md`, pergunta própria no bootstrap do `tech-lead` (não
+> mais escondida em "folder structure"). `guidelines/` esclarecido: já era aberto (carrega
+> tudo que existir na pasta do stack, não um schema fixo de 5 arquivos) — só não estava
+> explícito; exemplo de `nextjs/` mostra categorias extras (`component-patterns.md`,
+> `accessibility.md`, `state-management.md`) que Go/Java não têm e não precisam ter.
+
+## 1. Objetivo
+
+Framework de Spec-Driven Development (SDD) que:
+
+- Tem uma **máquina de estado canônica** única controlando em que etapa cada feature está.
+- Usa **uma metodologia própria** (`aifullpeople`), merge deliberado de BMAD e OpenSpec.
+- **Não é exclusivo do Claude Code** — as skills precisam funcionar também em Codex, GitHub
+  Copilot e outros agentes de codificação (§2).
+- É configurável por projeto: idioma (`en`/`pt-BR`), tudo dentro de **`.aifullpeople/`** no
+  repo de destino.
+- Nasce com foco em Go, com guidelines organizadas por stack + um conjunto compartilhado (§5).
+- Exige **aprovação humana explícita** em cada transição de estágio — nenhum artefato avança
+  pro próximo papel sem sign-off do usuário, por padrão (§15).
+- Captura o contexto de engenharia do projeto uma vez, em `context_project.md` na raiz, e
+  reaproveita entre metodologias e features (§11) em vez de redescobrir a cada feature.
+- Roda uma pipeline de **Gates de qualidade** (compilação, lint, dependências/arquitetura,
+  script próprio do projeto, testes, código morto) antes de qualquer feature virar `done` (§8).
+- Gera relatórios em 3 níveis — task, feature e projeto (§10).
+
+Sem CLI/binário próprio: o motor é Markdown (skills) + JSON de estado.
+
+## 2. Portabilidade entre agentes (Claude Code, Codex, Copilot, ...)
+
+Nesta própria sessão você instalou a skill `grill-me` via `npx skills add` e ela chegou como
+"universal: Codex, Cursor, GitHub Copilot, OpenCode, Amp +12 more" — o conteúdo canônico ficou em
+`.agents/skills/grill-me/SKILL.md`, com um symlink `.claude/skills/grill-me` apontando pra ele e
+um arquivo opcional `agents/openai.yaml` com metadados específicos daquele runtime. Vamos adotar
+exatamente essa convenção em vez de inventar a nossa:
+
+- **Fonte canônica:** `.agents/skills/<nome-da-skill>/SKILL.md`, uma pasta por skill (cada papel
+  vira uma skill própria: `aifullpeople-pm`, `aifullpeople-tech-lead`, `aifullpeople-developer`,
+  `aifullpeople-evaluator`, mais as `core` — §4).
+- **Conteúdo agnóstico de ferramenta:** o corpo de cada `SKILL.md` é escrito em instrução
+  simples — "leia o arquivo X", "rode `git diff`", "escreva Y" — nunca referenciando nomes de
+  tools específicos do Claude Code (nada de "use a tool Read"). Qualquer agente que leia/escreva
+  arquivo e rode shell consegue seguir. Isso cobre Codex e Copilot sem eu precisar adivinhar a
+  API interna de cada um.
+- **Adaptação por ferramenta, quando necessário:** arquivos `agents/<tool>.yaml` dentro da pasta
+  da skill, só quando aquele runtime específico precisar de metadado extra (política de
+  invocação, nome de exibição) — mesmo padrão do `agents/openai.yaml` do grill-me.
+- **Instalação no Claude Code:** symlink `.claude/skills/<nome>` → `.agents/skills/<nome>`
+  (o que o instalador já faz automaticamente).
+- **Limitação honesta:** não tenho como testar de fato dentro do Codex CLI ou do Copilot a partir
+  daqui. A convenção de pasta/arquivo eu replico com confiança (já vimos funcionando nesta
+  sessão); o comportamento real dentro de cada ferramenta terceira fica para validar quando vocês
+  rodarem lá — se algo não for reconhecido, ajustamos o `SKILL.md` daquele papel especificamente,
+  sem mudar a estrutura geral.
+
+## 3. Merge BMAD + OpenSpec — de onde vem cada peça
+
+| Ideia | Origem | Como entra no `aifullpeople` |
+|---|---|---|
+| Papéis com responsabilidade clara | BMAD (Analyst/PM/Architect/SM/Dev/QA) | 4 papéis (§4): PM, Tech Lead, Developer, Evaluator |
+| PRD único com problema/oportunidade | BMAD (PM) | Cobre o "porquê" do `proposal.md` do OpenSpec — não duplicamos esse artefato |
+| `design.md` + `tasks.md` por feature | OpenSpec (`design.md`, `tasks.md` por change) | Substitui `spec.md`/`plan.md` dos exemplogs |
+| `specs/` como fonte viva da verdade | OpenSpec | `state.json` + `design.md` de features `done` cumprem esse papel |
+| Sharding em stories/tasks rastreáveis | BMAD (SM) + OpenSpec (`tasks.md`) | Tasks são objetos no `state.json` com `status` próprio |
+| Evaluator como papel dedicado | BMAD (QA) | Estágio `validation` vira responsabilidade do papel Evaluator, separado do Developer |
+| Contrato de comportamento testável, com gate de cobertura | Nenhum dos dois — acréscimo próprio (§7) | `contract.md`, terceiro artefato do `tech-lead`; checklist compartilhado entre Developer e Evaluator |
+
+## 4. Papéis — personas do Aranhaverso
+
+Escolhi **Homem-Aranha no Aranhaverso** (não a trilogia clássica) porque é o único filme com
+vários Aranhas, cada um com uma personalidade nítida — encaixa bem com múltiplos papéis
+especializados. O nome do personagem é só **flavor** (tom de voz do `SKILL.md`, textos de log);
+o **identificador técnico** é sempre o nome funcional em inglês, porque precisa ser lido por
+qualquer agente (§2), não só por quem pegou a referência do filme.
+
+| Papel (id técnico) | Persona (flavor) | Por quê | Estágios | Produz |
+|---|---|---|---|---|
+| `pm` | **Miguel O'Hara** | Guardião do "canônico" — define o que precisa ser verdade (requisitos) | `discovery`, `requirements` | `.aifullpeople/pm/brief.md`, `.aifullpeople/pm/prd.md` |
+| `tech-lead` | **Peter B. Parker** | O mentor experiente que transforma visão em plano técnico concreto | `design`, `tasks` | `features/<id>/tech-lead/{design,tasks,contract}.md` (§7) |
+| `developer` | **Miles Morales** | Quem efetivamente dá o "salto de fé" e constrói | `implementation` | código, commits (1 por task), micro-relatórios por task |
+| `evaluator` | **Gwen Stacy** | Olhar de fora, precisão, encontra o que quebra antes de "canonizar" como pronto | `validation` | re-checagem de critérios de aceite, aprova ou devolve pro Developer |
+
+Evaluator vira papel próprio agora (não embutido no Developer): `developer` entrega e roda os 6 Gates de
+qualidade (§8) por task e no repo inteiro, mas a **decisão de fechar a feature como `done`** é do
+`evaluator`, que só começa depois dos Gates verdes e roda uma re-checagem independente dos critérios de
+aceite (equivalente ao Step 6 do `implement-feature` original, só que como um papel/skill
+separado). Se falhar, `evaluator` devolve a feature pro estágio `implementation` com a lista do que
+falhou — o próprio ciclo que já existia no diagrama de estados
+(`validation --> implementation: regressão encontrada`).
+
+Dois papéis adicionais **não fazem** parte deste ciclo principal — são o `developer` (Miles
+Morales) fazendo passadas diferentes, sem persona nova: `aifullpeople-developer-codereview`
+(§20) roda entre os Gates e o handoff, revisando qualidade de código contra `guidelines/*.md`
+(algo que nem os Gates nem o `evaluator` fazem — ver §20 pra entender por quê); e
+`aifullpeople-developer-fix-runner` (§19), que entra quando `evaluator` reprova, fazendo a
+correção cirúrgica só dos itens que falharam em vez de reprocessar `tasks.md` inteiro de novo.
+
+## 5. Estrutura do framework (este repo)
+
+Revisão: eu tinha exagerado na quantidade de scripts. Regra que fica valendo daqui pra frente:
+
+> **Script só quando (a) mexe em algo externo/irreversível (git, filesystem em massa), ou
+> (b) é um algoritmo não-trivial onde errar é caro (grafo, contagem exata de bytes).** Ler ou
+> editar um campo de um JSON pequeno, somar dois números, ou incrementar um contador de ID é mais
+> rápido e mais simples feito direto pelo modelo (Read/Edit) do que orquestrando um script pra
+> isso — orquestrar o script custaria mais do que faz economizar.
+
+Aplicando essa regra: **removidos** `state_get`/`state_update` (ler e editar `state.json` — o
+modelo faz direto com Read/Edit, o arquivo é pequeno), `new_feature_id` (incrementar `F0N` é
+trivial de olhar e somar 1), `validate_state` (inspeção direta ao ler o arquivo já é suficiente) e
+`rollup_report` (o modelo já está lendo os relatórios de task pra escrever o resumo da feature;
+somar os números ali mesmo não pede um script à parte).
+
+**Mantidos**, com justificativa por que cada um passa no critério acima:
+
+| Script | Skill dona | Por quê é script |
+|---|---|---|
+| `init.sh` | `aifullpeople-init` | Cria `.aifullpeople/` (pastas, `config.yaml`, `state.json` inicial) — mexe no filesystem em bloco, quer ser idempotente e não deixar o projeto pela metade se falhar no meio |
+| `commit.sh` | `aifullpeople-developer` | Git é externo e o resultado fica no histórico pra sempre — `git add <arquivos específicos> && git commit` sempre da mesma forma, sem depender do modelo lembrar de não usar `git add -A` |
+| `compute_waves.py` | `aifullpeople-pm` | Ordenação topológica + detecção de ciclo no grafo de dependências do PRD — algoritmo, não é "olhar e somar 1" |
+| `estimate_tokens.sh` | `aifullpeople-developer` | Contagem exata de bytes (`wc -c`) — modelo contando caractere é impreciso e caro à toa |
+
+Nenhum script é compartilhado entre skills — cada um vive dentro da skill que o usa
+(`aifullpeople-X/scripts/`), sem uma pasta `_lib/` central. Sem operação genuinamente comum a
+todas as 7 skills sobrando, essa camada extra de indireção não se paga.
+
+```
+sdd-framework-aifullpeople/
+├── docs/
+│   └── architecture.md
+├── .agents/
+│   └── skills/
+│       ├── aifullpeople-init/
+│       │   ├── SKILL.md
+│       │   └── scripts/
+│       │       └── init.sh
+│       ├── aifullpeople-status/
+│       │   └── SKILL.md
+│       ├── aifullpeople-set-methodology/
+│       │   └── SKILL.md                    # ver §9 — nome trocado de "switch"
+│       ├── aifullpeople-pm/
+│       │   ├── SKILL.md
+│       │   ├── scripts/
+│       │   │   └── compute_waves.py
+│       │   ├── references/
+│       │   │   └── prd-sections.md         # as 9 seções detalhadas (hoje dentro do SKILL.md)
+│       │   └── assets/
+│       │       └── brief-template.md
+│       ├── aifullpeople-tech-lead/
+│       │   ├── SKILL.md
+│       │   ├── references/
+│       │   │   ├── design-and-tasks-rules.md
+│       │   │   └── contract-rules.md       # o template completo que você trouxe (§7), adaptado
+│       │   └── assets/
+│       │       ├── design-template.md
+│       │       ├── tasks-template.md
+│       │       └── contract-template.md
+│       ├── aifullpeople-developer/
+│       │   ├── SKILL.md
+│       │   ├── scripts/
+│       │   │   ├── commit.sh
+│       │   │   └── estimate_tokens.sh
+│       │   └── assets/
+│       │       └── task-report-template.md
+│       └── aifullpeople-evaluator/
+│           ├── SKILL.md
+│           └── references/
+│               └── evaluation-checklist.md
+├── guidelines/
+│   ├── solid-principles.md        # compartilhado DE VERDADE — conceito de design, não sintaxe
+│   ├── anti-patterns.md           # compartilhado: só os universais (god object, número mágico, copy-paste, otimização prematura)
+│   ├── testing.md                 # compartilhado: filosofia só (pirâmide de teste, o que mockar, arrange-act-assert) — zero nome de ferramenta
+│   ├── naming-conventions.md      # compartilhado: só o preâmbulo universal (consistência, nome com significado, sem abreviação) — o grosso é por stack
+│   ├── error-handling.md          # compartilhado: só a filosofia (falhar rápido, nunca engolir erro, logar com contexto) — a mecânica é por stack
+│   ├── go/
+│   │   ├── go.md                  # overview do stack, linka os arquivos abaixo + o layout de pacotes (cmd/internal/pkg)
+│   │   ├── error-handling.md      # CONCRETO: error values, wrapping com %w, errors.Is/As, panic só em caso irrecuperável
+│   │   ├── naming-conventions.md  # CONCRETO: MixedCaps, sem stutter (user.Service, não user.UserService), receiver curto
+│   │   ├── testing.md             # CONCRETO: table-driven tests, testify vs. stdlib, subtests com t.Run
+│   │   ├── anti-patterns.md       # CONCRETO: ignorar error retornado, panic como controle de fluxo, `any`/`interface{}` em excesso
+│   │   └── gates.md                # ferramenta de cada Gate (§8) pra Go — ver tabela do §8
+│   ├── java/                       # backend — os 5 compartilhados fazem sentido como estão,
+│   │   └── (mesma estrutura de go/, com o conteúdo concreto de Java) # só espelha
+│   └── nextjs/                     # frontend — os 5 ainda se aplicam, mas não bastam sozinhos
+│       ├── nextjs.md                   # overview do stack
+│       ├── error-handling.md           # CONCRETO: error boundaries, estados de erro na UI
+│       ├── naming-conventions.md       # CONCRETO: PascalCase de componente, hooks use*
+│       ├── testing.md                  # CONCRETO: Testing Library, mock de rede vs. mock de módulo
+│       ├── anti-patterns.md            # CONCRETO: prop drilling, useEffect como substituto de derived state
+│       ├── gates.md                    # ferramenta de cada Gate (§8) pra Next.js/TS
+│       ├── component-patterns.md       # EXTRA — categoria que Go/Java não têm, e tudo bem ter
+│       ├── accessibility.md            # EXTRA
+│       └── state-management.md         # EXTRA
+├── schema/                         # documentação da forma do state/config — não é validado
+│   ├── config.schema.json          # por script; é referência pro modelo ler antes de editar
+│   └── state.schema.json
+└── templates/
+```
+
+Sua dúvida tinha fundamento: `error-handling.md` e `naming-conventions.md` **não são majoritariamente
+compartilháveis** — Go trata erro como valor de retorno (sem exceção), Java tem checked/unchecked
+exception, JS tem try/catch + rejeição de Promise; nomenclatura idiomática de Go (`MixedCaps`, sem
+`Get` prefixo, sem stutter de pacote) não tem nada a ver com a de Java (`PascalCase` de classe,
+nomes descritivos longos). Por isso o arquivo da raiz, pra esses dois casos, fica **fino de
+propósito** — só a filosofia que atravessa qualquer stack — e quem carrega a regra concreta é o
+arquivo de **mesmo nome** dentro de `go/`, `java/`, `nextjs/`. Já `solid-principles.md` (princípio
+de design, não sintaxe) e a parte universal de `anti-patterns.md` (god object, código duplicado,
+otimização prematura) são conceituais o bastante pra serem compartilhados de verdade, com conteúdo
+substancial na raiz. `testing.md` fica no meio: a raiz cobre filosofia (o que testar, quanto
+mockar), cada stack cobre a ferramenta (Go: `testify`/stdlib; Java: JUnit/Mockito).
+
+### 5.1 Anatomia de cada skill
+
+Cada skill segue a anatomia padrão de Agent Skill (a mesma que a `skill-creator` ensina, e que
+vamos usar de fato pra montar cada uma na Fase 1 — não confiar só na minha memória da convenção):
+
+- **`SKILL.md`** — sempre carregado quando a skill é ativada. Fica enxuto: frontmatter
+  (`name`, `description`) + o fluxo de passos, sem o detalhe pesado de cada seção.
+- **`references/`** — detalhe que hoje está espremido dentro do `SKILL.md` dos exemplogs (ex.: as
+  regras das 9 seções do PRD, o checklist de validação) sai pra cá. Só é lido quando o passo
+  correspondente do fluxo precisa dele.
+- **`scripts/`** — só os 4 da tabela acima. Tudo que envolve ler/editar o `state.json`,
+  redação de conteúdo, ou julgamento (entrevista, re-check de critério de aceite) fica com o
+  modelo, sem wrapper.
+- **`assets/`** — templates literais (esqueleto de `design.md`, `tasks.md`, `brief.md`, relatório
+  de task) que a skill copia e preenche, em vez do modelo redigitar a estrutura todavez.
+
+## 6. Máquina de estado canônica
+
+```mermaid
+stateDiagram-v2
+  [*] --> discovery
+  discovery --> requirements
+  requirements --> design
+  design --> tasks
+  tasks --> implementation
+  implementation --> validation
+  validation --> done
+  validation --> implementation: Evaluator reprova
+```
+
+| Stage | Papel | Artefato |
+|---|---|---|
+| `discovery` | PM | `.aifullpeople/pm/brief.md` |
+| `requirements` | PM | `.aifullpeople/pm/prd.md` |
+| `design` | Tech Lead | `features/<id>/tech-lead/design.md` |
+| `tasks` | Tech Lead | `features/<id>/tech-lead/{tasks,contract}.md` (§7) + tasks no `state.json` |
+| `implementation` | Developer | commits (1/task) + `features/<id>/developer/<task-id>.md` |
+| `validation` | Evaluator | percorre `contract.md` (§7); aprova → `done`, ou reprova → volta pro Developer |
+| `done` | — | `features/<id>/evaluator/{summary,difficulty,tokens}.md` + `.aifullpeople/report.md` atualizado |
+
+## 7. Contrato de comportamento (`contract.md`)
+
+Terceiro artefato do `tech-lead`, ao lado de `design.md` e `tasks.md` — não é ideia do BMAD nem do
+OpenSpec (nenhum dos dois tem isso), é um acréscimo genuíno que resolve uma lacuna que os dois
+deixavam: nenhum garantia, de forma mecânica, que toda AC do PRD tivesse um jeito concreto de ser
+verificada antes da feature virar `done`.
+
+**O que é:** especificação de comportamento, agnóstica de stack e de quem vai lê-la (agente ou
+humano), organizada por **superfície de verificação** (`## HTTP API`, `## CLI`, `## Service`,
+`## UI`, `## Worker`, `## Event`, `## E2E` — cada feature emite só as que se aplicam). Dentro de
+cada superfície, itens Given/When/Then com ID estável (`API-LOGIN-01`), agrupados por capability.
+
+**Coverage Manifest + hard gate:** uma tabela mapeia cada AC do PRD (texto verbatim, não um ID
+sintético) pros itens que a cobrem. `tech-lead` valida antes de salvar: se alguma AC dentro do
+escopo da feature ficar sem item cobrindo, **aborta os três arquivos** (`design.md`, `tasks.md`,
+`contract.md` — nenhum fica pela metade). Segue o mesmo princípio semântico do `implement-feature`
+original: localizar a AC no PRD pelo conteúdo, nunca por número fixo de seção — o `prd.md` do
+nosso `pm` não tem obrigação de numerar igual ao exemplo dos exemplogs.
+
+**Três pontos de integração com o que já existia neste doc, em vez de conceito novo:**
+
+- **Seção "Quality gates" do contrato = §8 (Gates), só que por feature.** Não é uma segunda lista
+  de qualidade — é a mesma tabela do §8, filtrada pro que essa feature usa, com o comando já
+  resolvido. Resolve o item que eu tinha deixado em aberto (cache do comando de Gate descoberto).
+- **Prerequisites (fixtures, seed de dado, mock) lê do `context_project.md` (§11), não redescobre.**
+  O template original propõe descobrir convenção de fixture/seed/config/mock por conta própria —
+  isso é exatamente o mesmo problema de redescoberta repetida que motivou o `context_project.md`.
+  Essas 4 convenções viram mais uma categoria capturada lá (Layer 1/2 discovery do `init`), e o
+  `contract.md` só lê.
+- **Evaluator para de improvisar a re-checagem de AC.** Em vez de julgamento livre sobre "isso atende o
+  critério?", `evaluator` percorre os itens do `contract.md` um a um e marca ✓/✗ — `references/
+  evaluation-checklist.md` da skill `evaluator` vira "como interpretar e executar um item do contrato",
+  não um checklist genérico.
+
+**Diferença de ciclo de vida em relação ao `context_project.md`:** `contract.md` é gerado e
+**read-only** depois — regeneração é por completo (não se edita à mão, não se acrescenta
+incrementalmente). É o oposto do `context_project.md`, que é vivo e só recebe adição. Os dois
+convivem porque resolvem problemas diferentes: um é conhecimento de projeto que se acumula, o
+outro é a promessa testável de uma feature específica, que muda por completo se a PRD mudar.
+
+**Custo, sendo direto:** gerar isso é mais token por feature do que só `design.md`+`tasks.md`. Vale
+a pena pelo que resolve (rastreabilidade PRD→teste garantida por gate, checklist compartilhado
+entre Developer e Evaluator), mas não é de graça — decisão consciente, não um "grátis" que eu queira
+vender.
+
+**Onde fica o conteúdo detalhado:** o template completo (schema de item, catálogo de superfícies,
+guard-rails, exemplo trabalhado) que você colou é grande demais pra este documento de arquitetura
+— aqui é onde a decisão é registrada, não o manual da skill. Ele vira
+`aifullpeople-tech-lead/references/contract-rules.md` na Fase 1 (§5.1 já previa exatamente esse
+uso de `references/`: detalhe pesado, carregado só quando o passo de gerar o contrato precisa
+dele), com "spec-writer"/`spec.md`/`plan.md` do texto original traduzidos pra `tech-lead`/
+`design.md`/`tasks.md`.
+
+`state.json` ganha um terceiro artefato por feature (ver §13):
+
+```json
+"contract": { "path": ".aifullpeople/features/F01-cadastro-usuario/tech-lead/contract.md", "status": "done" }
+```
+
+## 8. Gates de qualidade
+
+Os 6 que você listou, na mesma ordem — a ordem já é a certa (do mais barato/rápido de falhar pro
+mais caro/amplo, então nada roda à toa se algo básico já quebrou):
+
+| # | Gate | O que checa | Ferramenta (documentada em `guidelines/<stack>/gates.md`, exemplo Go) |
+|---|---|---|---|
+| 1 | Compilação/contrato | O projeto compila; contratos (schema de API, proto, etc.) são válidos | `go build ./...`, validação de contrato se houver |
+| 2 | Lint | Estilo e problemas estáticos | `golangci-lint run` (ESLint é o equivalente em JS/TS — o nome do gate é genérico, a ferramenta é por stack) |
+| 3 | Fronteira de dependências/arquitetura | Import indevido entre camadas, ciclo de pacote | equivalente Go ao Dependency Cruiser (ex.: `depguard`, regra de import por camada) |
+| 4 | Script próprio do projeto | Qualquer checagem específica daquele projeto que não é genérica de stack | descoberto em runtime (`Makefile`, script em `.aifullpeople/config.yaml: gates.custom`) |
+| 5 | Testes automatizados | Suite de testes passa | `go test ./...` |
+| 6 | Código morto/dependências não usadas | Função/import/dependência sem uso | `staticcheck`/`deadcode`, `go mod tidy -diff` |
+
+**Proposta de 7º gate — segurança:** checagem de vulnerabilidade conhecida em dependências
+(`govulncheck` pra Go). Não estava na sua lista; incluo como sugestão porque é uma categoria de
+falha que nenhum dos 6 cobre (lint/testes não pegam CVE em dependência). Fácil de desativar no
+`config.yaml` se vocês não quiserem por agora.
+
+**Semântica de falha:** os Gates reaproveitam o mesmo tri-estado que o `implement-feature` original
+já definia — **hard-fail** (bloqueia, retry até o limite configurado), **soft-fail** (ferramenta
+não roda nesse ambiente — pula e registra), **falha pré-existente** (já falhava antes desta task,
+não conta contra o retry). Não é um mecanismo novo, é o mesmo já usado na Fase 1 do roadmap.
+
+**Quem roda e quando:** `developer` roda os Gates relevantes a cada task (escopo: arquivos
+tocados) e roda o conjunto **completo** no repo inteiro antes de considerar a feature pronta pra
+Evaluator — mesmas duas passadas que o `implement-feature` original já fazia (por fase, e a validação
+final completa). **`evaluator` só começa a re-checagem de critérios de aceite depois que todos os Gates
+estão verdes** — se um Gate falha, a feature volta pro Developer sem Evaluator precisar nem olhar os
+critérios de aceite ainda. Ou seja: Gates são checagem de **engenharia** (o código está correto/
+limpo/seguro); a re-checagem do Evaluator é checagem de **produto** (o comportamento atende o que o PRD
+pediu) — as duas são necessárias e não substituem uma à outra.
+
+`config.yaml` registra quais Gates estão ativos (todo Gate desligável, exceto compilação/testes
+que são o mínimo pra existir um `done`) — o bloco `gates:` faz parte do mesmo `config.yaml` único
+do projeto, mostrado por completo no §12.
+
+## 9. Lock de metodologia por feature
+
+Sua regra: se uma feature começou com OpenSpec (ou BMAD, ou `aifullpeople`), ela **termina** com
+essa mesma metodologia — trocar a metodologia ativa não migra trabalho em andamento.
+
+Implementação: cada feature grava seu próprio `methodology` no `state.json` **no momento em que é
+criada** (entrada no estágio `discovery`/`requirements`), imutável depois disso:
+
+```json
+{
+  "id": "F01",
+  "methodology": "aifullpeople",
+  "stage": "tasks",
+  ...
+}
+```
+
+- `config.yaml: methodology` é só o **default para features novas** — não é um interruptor global
+  retroativo.
+- A skill que eu tinha chamado de `aifullpeople-switch-methodology` foi renomeada pra
+  **`aifullpeople-set-methodology`**: ela só atualiza esse default. Nunca toca em features
+  existentes.
+- Cada papel (`pm`, `tech-lead`, `developer`, `evaluator`), ao agir sobre uma feature específica, lê o
+  `methodology` **daquela feature** no `state.json` — não o default do config — antes de decidir
+  qual conjunto de artefatos/nomenclatura usar. Hoje só existe o pack `aifullpeople`, então isso é
+  uma trava de segurança que já nasce pronta para quando (se) BMAD/OpenSpec puros existirem como
+  packs alternativos.
+- Uma feature só pode ser marcada `done` pela mesma metodologia que a abriu. Tentar rodar um papel
+  de metodologia diferente numa feature em andamento é bloqueado com uma mensagem clara.
+
+## 10. Relatórios — 3 níveis (task, feature, projeto)
+
+Sua observação era: gerar incrementalmente a cada task, e um resumo no final — mas não sabia se o
+"final" é por feature ou por projeto. Resposta: **os dois**, porque é a mesma hierarquia que já
+existe no `state.json` (task → feature → projeto):
+
+```
+.aifullpeople/
+├── report.md                              # nível PROJETO — atualizado a cada feature concluída
+└── features/
+    └── F01-cadastro-usuario/
+        └── report/
+            ├── tasks/
+            │   ├── F01-T1.md               # nível TASK — criado quando a task termina
+            │   └── F01-T2.md
+            ├── summary.md                  # nível FEATURE — gerado quando Evaluator aprova (done)
+            ├── difficulty.md
+            └── tokens.md
+```
+
+**Nível task** (`features/<id>/developer/<task-id>.md`, gerado pelo Developer ao terminar cada task):
+descrição da task, arquivos tocados, desvios em relação ao `design.md`/`tasks.md`, e a estimativa
+de tokens daquela task (§10.1).
+
+**Nível feature** (gerado pelo Evaluator quando aprova a feature como `done`, agregando os relatórios de
+task):
+- `summary.md` — o que foi implementado, decisões, checklist de critérios de aceite re-checados.
+- `difficulty.md` — dificuldade **estimada** pelo Tech Lead (`tasks.md`, escala trivial/simple/
+  medium/complex) vs. **real**, derivada do que os relatórios de task mostraram (nº de desvios,
+  retries, redesenhos). É esse par que vira sinal de calibração pro board visual depois.
+- `tokens.md` — soma das estimativas de todas as tasks da feature (§10.1).
+
+**Nível projeto** (`.aifullpeople/report.md`, atualizado toda vez que uma feature chega a `done`):
+tabela com uma linha por feature (nome, dificuldade estimada/real, tokens estimados, data de
+conclusão) + total acumulado do projeto. É o arquivo que dá o resumo executivo de "o PRD inteiro
+até aqui".
+
+### 10.1 Estimativa de tokens — v1
+
+Limitação real: nenhuma skill tem acesso programático à contagem exata de tokens da sessão — isso
+só existe hoje via `/cost` (leitura manual). Proposta v1, deliberadamente simples e auditável, sem
+fator de correção inventado:
+
+```
+tokens_estimado(task) = round( (bytes_lidos + bytes_escritos) / 4 )
+```
+
+- `bytes_lidos` = tamanho em bytes dos trechos de `design.md`/`tasks.md`/guidelines consultados +
+  conteúdo pré-edição dos arquivos tocados nessa task.
+- `bytes_escritos` = tamanho em bytes do diff produzido (linhas adicionadas + removidas) + o
+  próprio texto do micro-relatório da task.
+- `4` = aproximação padrão de caracteres por token em inglês/código (heurística comum, não exata).
+
+Implementado como script (`aifullpeople-developer/scripts/estimate_tokens.sh`, §5) — `wc -c` e uma divisão, sem
+motivo pra passar pelo modelo. Funciona em qualquer agente com shell (§2), sem depender de nenhuma
+API do Claude Code. **É deliberadamente um piso, não o total real**: não conta overhead
+de conversa, "thinking", tool calls, nem retries. Cada `tokens.md` termina com a linha: *"Estimativa
+de conteúdo, não da sessão completa. Para o valor real desta sessão, rode `/cost`."* Sem
+multiplicador de calibração por enquanto — se depois vocês compararem algumas estimativas com
+`/cost` reais e virem um fator consistente, a gente hardcoda esse fator na v2.
+
+## 11. Contexto do projeto (`context_project.md`)
+
+Item que faltava: um documento que capture o contexto de engenharia do projeto — stack, padrões
+de código já em uso, convenções — e que sirva **qualquer metodologia**, não só o pack
+`aifullpeople`. Por isso ele não fica dentro de `.aifullpeople/` (que é específico do pack): fica
+na **raiz do projeto de destino**, visível (sem ponto no nome), ao lado da pasta oculta:
+
+```
+<raiz do projeto>/
+├── context_project.md
+└── .aifullpeople/
+    └── ...
+```
+
+**Por que precisa existir:** nos exemplogs, o `spec-writer` refaz a "Codebase Pattern Discovery"
+(runtime, framework, banco, auth, API, testes, convenções...) **a cada feature nova** — trabalho
+repetido, gastando token de novo em algo que não muda entre uma feature e outra. `context_project.md`
+persiste essa descoberta uma vez e vira leitura, não redescoberta.
+
+**Quem lê:** os 4 papéis, sem exceção — PM usa pra não propor requisito incompatível com o que já
+existe; Tech Lead usa pra decisões de design consistentes com o padrão do projeto; Developer usa
+como as convenções a seguir na implementação; Evaluator usa pra saber qual é o padrão de teste esperado.
+Isso vale igual pra qualquer metodologia que atuar sobre o mesmo repo — é por isso que fica fora
+de `.aifullpeople/`.
+
+**Ciclo de vida:**
+- Criado por `aifullpeople-init`: se o projeto já tem código, roda a descoberta em duas camadas
+  (baseline + ampla, como o `spec-writer` original já fazia) uma única vez e grava aqui; se é
+  greenfield, começa com um esqueleto mínimo (stack pretendida a partir do `config.yaml`).
+- **Documento vivo, não estático:** Tech Lead e Developer podem *acrescentar* uma entrada quando
+  descobrem um padrão novo que não estava documentado (ex.: uma convenção de nomenclatura que só
+  apareceu na feature 5). Nunca reescrevem o documento inteiro — só complementam, igual o `specs/`
+  do OpenSpec funciona como fonte viva.
+- Não é validado por script (mesma regra do §5 — é prosa, não estrutura mecânica).
+
+**Regra de prioridade (a que decide quando `context_project.md` e o usuário parecem discordar):**
+- **`context_project.md` já populado → ele manda.** Se o projeto tem código e o discovery já
+  registrou um padrão (ex.: "erros retornados como valor, nunca panic"), nenhum papel deveria
+  ignorar isso em favor de preferência genérica — é o que o código de verdade já faz.
+- **Greenfield (`context_project.md` ainda vazio de decisões técnicas) → o que o usuário disser
+  manda.** Sem código existente pra descobrir nada, a única fonte de verdade é o que foi pedido —
+  inclusive estilo de arquitetura (ex.: "usar Clean Architecture"), não só framework/ORM/auth. É
+  exatamente essa pergunta que `aifullpeople-tech-lead` faz no "empty codebase bootstrap"
+  (`design-and-tasks-rules.md` Step 2), e a resposta vira a próxima entrada de
+  `context_project.md` — a partir daí, vira o primeiro caso da regra acima pra toda feature
+  seguinte. Não se pergunta de novo.
+
+## 12. Arquivos no projeto de destino (visão completa)
+
+Organizado **por papel**, não por tipo de arquivo — cada pasta só tem conteúdo de quem a
+gerou, então "quem produziu isso" é a própria localização, sem precisar abrir o arquivo pra
+saber (motivo: no exemplo `wordcount`, tudo misturado numa pasta `report/` só ficou difícil
+de ler de relance quem tinha feito o quê):
+
+```
+<raiz do projeto>/
+├── context_project.md
+└── .aifullpeople/
+    ├── config.yaml
+    ├── state.json
+    ├── report.md                    # rollup de projeto — não é de um papel só, fica na raiz
+    ├── pm/                          # pm opera em nível de projeto, não por feature
+    │   ├── brief.md
+    │   └── prd.md
+    └── features/
+        └── F01-cadastro-usuario/
+            ├── tech-lead/
+            │   ├── design.md
+            │   ├── tasks.md
+            │   └── contract.md
+            ├── developer/
+            │   ├── F01-T1.md
+            │   └── F01-T2.md
+            └── evaluator/
+                ├── summary.md
+                ├── difficulty.md
+                └── tokens.md
+```
+
+`guidelines/` **não** é copiado para dentro de `.aifullpeople/` — fica referenciado a partir do
+framework instalado (`.agents/skills/../guidelines/`, ou caminho equivalente conforme a
+ferramenta), pra evitar duas cópias divergindo. Não precisa enumerar quais guidelines carregar:
+por padrão é sempre os 5 arquivos compartilhados da raiz + **todos** os arquivos de
+`guidelines/<primary_language>/` — `guidelines_exclude` é só pra quem quiser desligar uma
+categoria específica (ex.: pular `anti-patterns` num projeto legado que não vai limpar isso agora).
+
+**A pasta de stack não é um schema fixo de 5 arquivos espelhados — é aberta.** "Carrega todos os
+arquivos da pasta" já significa isso: pra Go e Java (backend), os 5 compartilhados dão conta e a
+pasta só espelha (mesmo nome, conteúdo concreto). Pra frontend, os 5 ainda importam (SOLID,
+anti-patterns, error-handling e naming ainda fazem sentido em React/Next.js — só com exemplo
+diferente), mas não cobrem tudo que o paradigma precisa — daí a pasta `nextjs/` do exemplo acima
+ter `component-patterns.md`, `accessibility.md`, `state-management.md`, que não existem pra Go/Java
+porque backend não tem esse conceito. Nenhuma skill (`aifullpeople-tech-lead`,
+`aifullpeople-developer`, `aifullpeople-developer-codereview`) hardcoda quais arquivos esperar — todas
+leem "o que tiver na pasta", então essa extensão não exige mudar skill nenhuma, só popular os
+arquivos quando o stack existir de verdade (ainda não populamos `java/`/`nextjs/` com conteúdo —
+§16 já registrava isso; ficam como esqueleto até serem precisos de verdade).
+
+`config.yaml` completo (junta o que apareceu em §8 e aqui):
+
+```yaml
+language: pt-BR
+methodology: aifullpeople     # default para features novas — ver §9
+human_in_the_loop: true       # aprovação obrigatória em cada transição — ver §15
+stack:
+  primary_language: go
+  # guidelines_exclude: [naming-conventions]   # opcional — desliga categorias específicas
+gates:
+  compile: true
+  lint: true
+  dependency_boundary: true
+  custom: false          # true se o projeto tiver um script próprio de Gate 4
+  tests: true
+  dead_code: true
+  security: false        # 7º gate, proposto — desligado por padrão até vocês confirmarem
+```
+
+## 13. `state.json` (schema atualizado)
+
+```json
+{
+  "language": "pt-BR",
+  "default_methodology": "aifullpeople",
+  "context_project": { "path": "context_project.md", "last_updated": "2026-09-05T12:00:00Z" },
+  "artifacts": {
+    "brief": { "path": ".aifullpeople/pm/brief.md", "status": "done" },
+    "prd": { "path": ".aifullpeople/pm/prd.md", "status": "done" }
+  },
+  "features": [
+    {
+      "id": "F01",
+      "name": "Cadastro de usuário",
+      "methodology": "aifullpeople",
+      "stage": "tasks",
+      "artifacts": {
+        "design":   { "path": ".aifullpeople/features/F01-cadastro-usuario/tech-lead/design.md", "status": "done" },
+        "tasks":    { "path": ".aifullpeople/features/F01-cadastro-usuario/tech-lead/tasks.md", "status": "done" },
+        "contract": { "path": ".aifullpeople/features/F01-cadastro-usuario/tech-lead/contract.md", "status": "done" }
+      },
+      "estimated_difficulty": "medium",
+      "real_difficulty": null,
+      "tokens_estimated": null,
+      "tasks": [
+        { "id": "F01-T1", "phase": 1, "description": "Criar schema de usuário no banco", "status": "done" },
+        { "id": "F01-T2", "phase": 2, "description": "Endpoint de registro", "status": "in_progress" }
+      ]
+    }
+  ],
+  "history": [
+    { "at": "2026-09-05T12:00:00Z", "event": "prd_generated", "role": "pm" },
+    { "at": "2026-09-05T13:10:00Z", "event": "feature_design_generated", "feature": "F01", "role": "tech-lead" }
+  ]
+}
+```
+
+`real_difficulty` e `tokens_estimated` (por feature) ficam `null` até o `evaluator` aprovar e preencher —
+antes eu só tinha esses dois números dentro de `difficulty.md`/`tokens.md` em prosa, o que
+obrigaria o frontend da Fase 4 a fazer parsing de Markdown pra montar o board estimado-vs-real.
+Ficam também no `state.json`, que é dado estruturado de verdade. Isso deixa explícito que
+`.aifullpeople/report.md` (§10) é uma **renderização** desses mesmos dados pra leitura humana, não
+uma segunda fonte da verdade — se algum dia divergir, `state.json` que está certo.
+
+## 14. Roadmap
+
+1. **Fase 1** — `.agents/skills/` com `aifullpeople-init` (incluindo a criação/descoberta inicial
+   do `context_project.md`, §11), `aifullpeople-status`, e os 4 papéis (PM/Tech Lead/Developer/Evaluator),
+   evoluindo os 3 exemplogs, cada um com seus próprios `scripts/` quando aplicável (§5). `tech-lead`
+   já nasce gerando `contract.md` (§7) junto de `design.md`/`tasks.md`, com o hard gate de
+   cobertura de AC. `developer` já nasce rodando os 6 Gates (§8) por task + full-suite; `evaluator` já
+   nasce percorrendo `contract.md` e dependendo dos Gates verdes antes de checar critérios de
+   aceite. Usar a skill `skill-creator` pra montar/validar a anatomia de cada uma (§5.1) em vez de
+   confiar só na convenção descrita aqui. `guidelines/` com os 5 arquivos compartilhados +
+   `go/{go,error-handling,naming-conventions,testing,anti-patterns,gates}.md`.
+2. **Fase 2** — `aifullpeople-set-methodology` + lock por feature (§9) valendo de verdade, mesmo
+   com um único pack existindo — valida o mecanismo antes de precisar dele.
+3. **Fase 3** — validar a instalação real em Codex e Copilot (não só a convenção de pastas) e
+   ajustar `SKILL.md`s específicos se algo não for reconhecido.
+4. **Fase 4** — Frontend visual lendo `state.json` + `report.md` (board de features/tasks,
+   estimado-vs-real de dificuldade, tokens acumulados).
+
+## 15. Human-in-the-loop (HiTL) — aprovação obrigatória em cada transição de estágio
+
+Diferente dos Gates de qualidade (§8, que rodam ferramenta e voltam pass/fail
+automaticamente): isto é aprovação **humana explícita**, atravessando os 4 papéis de
+conteúdo (`pm`, `tech-lead`, `developer`, `evaluator`). Nomeado separado de propósito — se
+chamasse de "gate" também, ia se misturar com os 6 gates de código, que são coisas
+diferentes (ferramenta vs. julgamento humano).
+
+**Regra:** nenhum artefato entregável avança para o próximo papel sem aprovação
+explícita do usuário. Rascunhar e salvar o arquivo em disco é permitido antes da
+aprovação (o revisor precisa ver o arquivo real); o que fica bloqueado é o `stage` da
+feature avançar e o próximo papel começar.
+
+| Checkpoint | Papel que apresenta | O que é apresentado |
+|---|---|---|
+| `discovery` → `requirements` | `pm` | `pm/brief.md` (quando gerado) |
+| `requirements` → `design` | `pm` | `pm/prd.md` |
+| `design`/`tasks` → `implementation` | `tech-lead` | `design.md` + `tasks.md` + `contract.md` (um bundle só, geração atômica) |
+| `implementation` → `validation` | `developer` | resumo do que foi implementado + resultado dos Gates full-suite (não o diff inteiro) |
+| `validation` → `done` (ou volta pra `implementation`) | `evaluator` | o veredito **proposto** (aprovar/reprovar) + a checklist item a item do `contract.md` |
+
+**Fora do escopo do HiTL:** atualizações de `context_project.md` (documento vivo,
+acréscimo de fato descoberto, não uma decisão de design que precise de sign-off) e
+housekeeping de `state.json`/`report.md` que não represente uma entrega nova.
+`aifullpeople-init` e `aifullpeople-set-methodology` também ficam de fora — não
+produzem artefato de conteúdo.
+
+**Mecânica:** nenhuma API nova — é o mesmo mecanismo conversacional que já existia
+como override opcional ("pause between tasks" em `aifullpeople-developer`), só que
+agora **ligado por padrão** em vez de opt-in. O papel apresenta o artefato, espera uma
+resposta explícita do usuário; se vierem pedidos de mudança, revisa e apresenta de
+novo — o `stage` só avança na resposta afirmativa.
+
+**Status de artefato ganha um estado novo:** `pending → in_progress →
+pending_approval → done`. Só `done` libera o próximo papel. Isso é dado estruturado
+(não só "esperei uma resposta no chat") — o board da Fase 4 pode mostrar uma fila real
+de "aguardando aprovação" lendo `state.json`, sem depender do histórico de chat.
+
+**Configurável, ligado por padrão:** `config.yaml: human_in_the_loop` (`true` por
+padrão). Setar `false` volta ao comportamento anterior (totalmente autônomo) — é a
+válvula de escape pra automação/CI, não o default.
+
+**Tensão conhecida com Batch Mode (§14, ainda não implementado):** o Auto-Accept
+Policy do `spec-writer` original processava várias features sem interação. Com HiTL
+ligado, isso não muda o auto-accept das *recomendações da entrevista* — mas o artefato
+final de cada feature ainda precisa de aprovação antes de avançar. Ou seja, HiTL e
+Batch Mode não são mutuamente exclusivos: batch continua evitando a entrevista
+pergunta-a-pergunta, HiTL continua exigindo aprovação do resultado final.
+
+## 16. Decisões em aberto
+
+- **Sem `guidelines/security.md` dedicado:** `aifullpeople-developer-codereview` (§20) checa
+  segurança usando OWASP Top 10 genérico como baseline, porque não existe ainda um guideline
+  próprio do framework pra isso (nem compartilhado, nem por stack). Fica pra quando/se fizer
+  sentido dar o mesmo tratamento que demos a SOLID/anti-patterns/error-handling/naming/testing.
+- ~~Bug encontrado depois que a feature já está `done` — reabre?~~ — **resolvido:**
+  não reabre. Corrige direto (commit com mensagem deixando explícito que foi achado
+  pós-`done`, ex.: `fix(F01): ... (found post-done via manual run)`), sem voltar
+  `state.json` pra `implementation` nem exigir novo ciclo de Evaluator. Descoberto e decidido
+  rodando o exemplo `examples2` (Todo CRUD): um bug de persistência (`Store` não
+  criava o diretório pai) só apareceu rodando o binário manualmente, depois do Evaluator já
+  ter aprovado — porque nenhum Gate tinha como pegar (é comportamento de runtime, não
+  estático) e nenhum item do `contract.md` exercitava esse cenário (gap na geração do
+  contrato pelo `tech-lead`, não falha do Evaluator nem dos Gates — ver a nova regra de
+  "fresh environment item" em `contract-rules.md`, adicionada por causa disso).
+- Lista completa de stacks além de Go/Java/Next.js (§5) — adiciono pastas conforme vocês forem
+  precisando.
+- Conteúdo de fato dos 5 guidelines compartilhados e dos arquivos concretos de `go/` — próximo
+  passo depois deste doc.
+- Confirmar se entra o 7º Gate de segurança (§8) e se algum dos 6 originais deveria ser
+  soft (advisório, não bloqueia `done`) em vez de hard-fail — comecei todos como hard por padrão.
+- Formato exato do "script próprio do projeto" (Gate 4, §8): convenção de onde ele mora
+  (`Makefile` target? arquivo dedicado?) pra ser descoberto em runtime.
+- Validação real de compatibilidade com Codex/Copilot (§2, §14 Fase 3) — só dá pra confirmar
+  rodando lá.
+- **Status por item do `contract.md` no `state.json`:** hoje o resultado de cada item
+  (`API-LOGIN-01` passou ou não) fica só dentro do próprio `contract.md`/relatório do Evaluator. Pra o
+  board da Fase 4 mostrar "N/M itens passando" sem fazer parsing de Markdown, seria preciso um
+  array `contract_items` estruturado na feature do `state.json` — não fiz isso agora pra não
+  inchar o schema antes de ter um caso de uso real olhando pra ele.
+- Formato exato das entradas incrementais que Tech Lead/Developer acrescentam ao
+  `context_project.md` (§11) — data + papel + o que mudou, a definir no `assets/` template
+  da Fase 1.
+- **Batch Mode não foi carregado:** o `spec-writer` original conseguia gerar specs de várias
+  features da mesma wave em paralelo (auto-aceitando recomendações). O `tech-lead` novo herda o
+  fluxo interativo de feature única, mas eu não decidi se o modo batch sobrevive — se sim, quem
+  orquestra os sub-agentes (o próprio `tech-lead`? uma skill nova?). Fica pra Fase 1 decidir com
+  base em quanto isso importa na prática pra vocês.
+- ~~Foundation Features e checagem de dependência (greenfield) não foram remapeadas~~ —
+  **resolvido na Fase 1:** ficou em `aifullpeople-tech-lead/references/design-and-tasks-rules.md`
+  Step 1 (dependency readiness + os 3 cenários de Foundation, checados contra `state.json`
+  em vez de escanear o filesystem cru).
+- **Granularidade da reprovação do Evaluator:** quando `evaluator` reprova, ele reabre as tasks que falharam
+  especificamente, ou cria tasks corretivas novas? A Fase 1 optou pelo caminho mais simples —
+  `evaluator` só reporta os itens que falharam e qual task provavelmente é dona do gap, sem reabrir ou
+  criar task nenhuma automaticamente (`aifullpeople-evaluator/references/evaluation-checklist.md`,
+  "On rejection"). Fica pra uma fase futura decidir se isso merece mais automação.
+- ~~`.aifullpeople/` e `context_project.md` vão pro git do projeto de destino, ou ficam
+  gitignored?~~ — **resolvido na Fase 1: versionar.** `aifullpeople-developer` comita
+  `state.json` + o relatório da task junto do código, no mesmo commit por task (SKILL.md do
+  `developer`, passo 3.8) — cada commit já é auto-documentado.
+- ~~Cache de comando de Gate descoberto~~ — **resolvido na Fase 1:** ordem de resolução
+  documentada em `aifullpeople-developer/references/execution-rules.md` ("Gate command
+  discovery"): `context_project.md` cacheado → `contract.md` da feature →
+  `guidelines/<stack>/gates.md` → descoberta direta no projeto (e só então cacheia de volta).
+- **HiTL (§15) — granularidade fina não decidida:** hoje o checkpoint é por estágio (uma
+  aprovação por brief/PRD/bundle do tech-lead/handoff do developer/veredito do Evaluator), nunca por
+  task. Se algum projeto quiser aprovação por task também (mais rígido que o default), isso
+  reaproveitaria o mesmo override `pause between tasks` que já existe em
+  `aifullpeople-developer/references/execution-rules.md` — não decidi se vale formalizar como
+  um segundo nível de `human_in_the_loop` (`"per_stage" | "per_task"`) ou deixar como está
+  (override pontual, não config permanente).
+- **HiTL — vocabulário de aprovação não fechado:** os 4 papéis dizem "espere aprovação
+  explícita" mas não fixei a lista de respostas aceitas como aprovação. Proposta (a confirmar):
+  reaproveitar o mesmo conjunto que `execution-rules.md` já usa pro override "pause between
+  tasks" — `ok`, `continue`, `segue`, `yes`, mais óbvios como `aprovado`/`approved` — em vez de
+  inventar um segundo vocabulário só pra isso.
+
+## 17. Cada papel roda como subagente
+
+Padrão de invocação, não mudança de conteúdo das 4 skills de papel — `pm`, `tech-lead`,
+`developer`, `evaluator` continuam exatamente o que já são; o que muda é **quem executa os passos
+mecânicos delas** quando o framework é usado de verdade (fora de uma sessão de demonstração/
+construção como esta).
+
+**Por quê:** o trabalho de um papel (ler `design.md` inteiro, editar código, rodar Gates, escrever
+relatório) é verboso. Se a sessão que está conversando com o usuário faz esse trabalho inline, o
+contexto dela cresce a cada task/feature, mesmo em projetos que vão ter dezenas de features. Um
+subagente por invocação de papel mantém o contexto da sessão orquestradora pequeno — ela só recebe
+um resumo estruturado de volta, não a transcrição inteira do trabalho.
+
+**Quem fica em qual lado:**
+- **Subagente** faz o trabalho mecânico do papel até o ponto do checkpoint HiTL (§15): lê os
+  arquivos de entrada, redige/edita, roda Gates, salva em disco com `status: "pending_approval"`.
+  Para quando chega no checkpoint — nunca decide aprovação sozinho.
+- **Sessão orquestradora** (a que conversa com o usuário) recebe o resumo do subagente, apresenta
+  pro humano, espera a resposta. Isso é obrigatório ficar do lado de fora do subagente — aprovação
+  precisa ser visível e respondível pelo humano de verdade, e um subagente não sustenta esse
+  vai-e-volta com o usuário do mesmo jeito que a sessão principal sustenta.
+- **Finalização** (virar `status: "done"`, mover `stage`, commitar) é leve o bastante pra sessão
+  orquestradora fazer direto, sem precisar de mais um subagente só pra isso.
+
+**Mecânica no Claude Code:** a sessão orquestradora dispara um subagente (`general-purpose` serve —
+não precisa de um tipo dedicado por papel) com um prompt que instrui: "invoque a skill
+`aifullpeople-<papel>` com esta entrada, e devolva só um resumo compacto (não a transcrição
+inteira) com: o que foi produzido/alterado, os paths dos arquivos, resultado dos Gates quando
+aplicável, e o que falta aprovar." Isso espelha o padrão que vocês trouxeram do
+`implement-and-evaluate` (subagente por invocação de skill, retorno estruturado) — sem o loop de
+retry automático nem o journal elaborado daquele modelo, que são escopo de uma fase mais madura.
+
+**Lock (§18) e subagente andam juntos:** é o subagente que adquire o lock no início do seu
+trabalho e libera no fim — nunca a sessão orquestradora, que pode estar coordenando vários
+subagentes/conversas ao longo do tempo.
+
+**Portabilidade:** "subagente" aqui é conceito, não uma API específica — Claude Code tem o Agent
+tool; outra ferramenta pode ter um mecanismo diferente de sub-tarefa. O `SKILL.md` de cada papel
+não assume qual — só documenta que o trabalho pesado deveria rodar isolado da conversa principal.
+
+## 18. Lock de execução (concorrência)
+
+Diferente do lock de metodologia (§9, que trava qual metodologia fechou uma feature,
+permanente): isto é um mutex **transitório** — impede que dois agentes/sessões/modelos rodem sobre
+a mesma feature (ou o mesmo projeto, pro `pm`) ao mesmo tempo, o que corromperia `state.json` e
+geraria commits conflitantes.
+
+**Onde mora o lock:**
+- `.aifullpeople/.lock` — escopo de projeto, usado por `pm` (e implicitamente por `aifullpeople-
+  init`/`aifullpeople-set-methodology`, embora essas duas sejam rápidas o bastante pra o risco de
+  colisão ser baixo — não critical path).
+- `.aifullpeople/features/<id>/.lock` — escopo de feature, usado por `tech-lead`, `developer`,
+  `evaluator`, e o `developer-fix-runner` (§19).
+
+**Conteúdo:** uma linha, `<PID> <papel> <timestamp ISO>`.
+
+**Mecânica** (`aifullpeople-init/scripts/lock.sh`, script — não fica com o modelo porque envolve
+checagem de liveness de processo, fácil de errar na mão):
+- `acquire`: lock não existe → cria e segue. Lock existe, PID dono ainda vivo (`kill -0`) → aborta
+  alto, avisa quem seguraria o lock e desde quando. Lock existe, PID morto → lock era de uma
+  execução que travou/crashou, sobrescreve com aviso (não silencioso).
+- `release`: apaga o arquivo. Idempotente. Chamado em **toda** saída do papel, sucesso ou aborto —
+  só sobra lock preso se o processo realmente morreu sem chance de rodar sua própria limpeza, e aí
+  o próximo `acquire` já resolve sozinho via a checagem de liveness.
+
+**Nunca vai pro git:** `.lock` contém um PID de máquina local, sem sentido pra outra pessoa —
+`aifullpeople-init` já grava um `.gitignore` com `.aifullpeople/.lock` e
+`.aifullpeople/**/.lock` no primeiro `init`.
+
+**Limitação honesta:** `kill -0` é POSIX — funciona nos sandboxes Linux/macOS típicos de Claude
+Code/Codex/Copilot. Windows nativo sem camada POSIX não foi validado.
+
+## 19. `aifullpeople-developer-fix-runner`
+
+Papel adicional, não um 5º papel do pipeline principal — só existe quando `evaluator` reprova uma
+feature. Adaptado (bem reduzido) de um modelo trazido pelo usuário; deixei de fora o que não se
+aplica ainda ao nosso estágio de maturidade: fluxo de PR/merge, journal por ciclo, orquestrador com
+circuit-breaker automático. A ideia central que vale a pena — correção **cirúrgica**, não
+re-executar `tasks.md` inteiro de novo — essa ficou.
+
+**Por que existe:** hoje, quando `evaluator` reprova, `ac-recheck-checklist.md` só lista os itens
+que falharam e para (arquitetura já dizia: "não reabre automaticamente task nenhuma" — ver
+§16, "Granularidade da reprovação"). Isso deixava a próxima ação vaga — reinvocar `developer`
+inteiro reprocessaria as 5-6 tasks já `done`, sem necessidade.
+
+**O que muda no `evaluator`:** a cada rodada (aprovando ou reprovando), persiste um
+`evaluator/eval-report-<timestamp-ISO>.md` com o veredito item a item + evidência (não só falar em
+chat) — isso vira o insumo que o `fix-runner` lê, já que ele roda no seu próprio subagente (§17) e
+não tem acesso ao histórico de chat de quem rodou o `evaluator`.
+
+**Fluxo:**
+1. `evaluator` reprova → `eval-report-<ts>.md` salvo, `stage` volta pra `implementation`,
+   `evaluator` aponta pro `developer-fix-runner` com o path do report + os IDs que falharam.
+2. `developer-fix-runner` lê **só** os itens falhos do `contract.md` (não o contrato inteiro) +
+   as seções relevantes do `design.md` + a evidência do eval-report. Nunca lê `tasks.md` — não é
+   um re-plano, é uma correção.
+3. Edita o mínimo necessário pra satisfazer os itens falhos. `contract.md` é canônico pra
+   comportamento observável; `design.md` é canônico pra estrutura interna — mesma regra de
+   precedência que já vale pro `developer` normal.
+4. Roda os Gates (mesmo tri-estado hard/soft/pré-existente, mesmo orçamento de retry = 3).
+5. **Checkpoint HiTL, sem exceção** (pedido explícito do usuário, diferente do modelo original que
+   não tinha isso): apresenta o que foi mudado + resultado dos Gates, espera aprovação — só depois
+   disso comita. Isso é o "circuit-breaker" deste framework: em vez de um contador automático de
+   ciclos decidindo quando parar, é o humano que decide se vale insistir em mais uma rodada.
+6. Aprovado → um commit só (`fix(F<id>): cycle <n> — address items <lista>`), incrementa
+   `features[].fix_cycles` (novo campo, default 0) em `state.json`, `stage` volta pra
+   `validation`, devolve pro `evaluator` rodar de novo.
+
+**Nunca:** editar `contract.md`/`design.md`/`tasks.md` (se a correção exigiria mudar um deles, é
+sinal de que o problema é no contrato/design, não na implementação — aborta e devolve pro
+`tech-lead` regenerar o trio); adicionar task nova ou reabrir uma já `done` diretamente — o
+`fix_cycles` existe exatamente pra não perder essa distinção entre "task original" e "correção".
+
+**Fora de escopo por agora** (do modelo original, deliberadamente não trazido): resolução de
+conflito de merge/PR (`Mode B`), `prd_progress.json` com múltiplos campos e regras de reset,
+criação automática de PR, orquestrador com circuit-breaker sem humano no loop. Esse framework
+ainda não tem um modelo de branch/PR — quando tiver, revisita.
+
+## 20. `aifullpeople-developer-codereview`
+
+Gap real descoberto perguntando "o `developer`→`evaluator` é o nosso code review?" — a resposta
+foi não, e checando os arquivos de verdade: nada no pipeline consultava
+`guidelines/*.md`/`guidelines/<stack>/*.md` (SOLID, anti-patterns, error-handling,
+naming-conventions, testing) como critério. Os Gates (§8) checam mecanicamente (ferramenta,
+pass/fail); `evaluator` (§7) verifica comportamento externo e **nunca lê código-fonte**, por
+design. Sobrava um buraco: qualidade de código, no sentido de "o código honra a filosofia dos
+nossos próprios guidelines", não tinha quem checasse. Todos aqueles arquivos de guideline eram
+decorativos.
+
+**Não é um 5º papel independente** — mesma lógica do `fix-runner` (§19): é `aifullpeople-developer`
+(Miles Morales) fazendo outra passada, não uma persona nova. A independência de verdade vem de
+rodar como subagente próprio (§17) — contexto fresco, não da mesma conversa que escreveu o código.
+
+**Dois modos de escopo**, mesmo padrão de detecção por formato de entrada que o `fix-runner` já
+usa: `feature=<id>` (diff da feature inteira) ou `task=<task-id>` (só aquela task).
+
+**Quando roda:**
+- **Escopo feature — automático, obrigatório:** entre os Gates full-suite e o checkpoint de HiTL
+  de handoff do `developer` (§15) — as descobertas entram na **mesma** aprovação, não abrem um
+  segundo checkpoint. Isso respeita a decisão já tomada de HiTL ser por estágio, não por task
+  (§16) — não queríamos multiplicar interrupção.
+- **Escopo task — sob demanda:** não dispara subagente extra por task por padrão (custaria uma
+  invocação de subagente a cada task, sem necessidade); disponível quando alguém quer uma
+  segunda opinião focada numa task específica.
+
+**Puramente consultivo — nunca bloqueia, nunca decide.** Produz um relatório com severidade
+(Critical/Major/Minor) + achados positivos + perguntas genuínas — sem veredito, sem status de
+aprovação. Diferente do `evaluator` (que propõe aprovar/reprovar) e diferente dos Gates (que
+bloqueiam de verdade em hard-fail) — aqui quem decide o que vale corrigir é sempre o humano.
+
+**Achado aprovado para correção não passa pelo `fix-runner`.** `fix-runner` existe especificamente
+pra ciclos *pós-reprovação* do `evaluator` (§19) — nesse ponto a feature ainda nem chegou no
+`evaluator`, então corrigir um achado de code review continua sendo trabalho do próprio
+`developer`, sob o lock dele mesmo (§18), um commit a mais antes do handoff.
+
+**Nunca duplica o que um Gate já garante mecanicamente** — se `golangci-lint` pegaria, não é
+achado aqui. Essa skill existe pro que ferramenta não pega: se o código honra a *filosofia* por
+trás de um guideline, não só a letra dele (lint pega variável não usada; não pega "essa função
+faz três coisas sem relação").

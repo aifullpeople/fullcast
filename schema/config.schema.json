@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sdd-framework-aifullpeople/schema/config.schema.json",
+  "title": "aifullpeople config",
+  "description": "Documentation reference for .aifullpeople/config.yaml — not enforced by a script (architecture.md §5: reading/editing a small config is model work, not script work). Read this before hand-editing the file.",
+  "type": "object",
+  "required": ["language", "methodology", "stack"],
+  "additionalProperties": false,
+  "properties": {
+    "human_in_the_loop": {
+      "type": "boolean",
+      "default": true,
+      "description": "Requires explicit human approval at every stage transition (architecture.md §15) — separate from the 6+1 quality Gates. Default true; set false only to opt into fully autonomous runs (automation/CI)."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["en", "pt-BR"],
+      "default": "en",
+      "description": "Language of all generated prose content (PRD, design, tasks, reports). IDs, JSON keys, and file names stay ASCII/English regardless (architecture.md §10)."
+    },
+    "methodology": {
+      "type": "string",
+      "description": "Default methodology for NEW features. Never retroactive — each feature locks its own methodology at creation time in state.json (architecture.md §9). Today only \"aifullpeople\" exists.",
+      "default": "aifullpeople"
+    },
+    "stack": {
+      "type": "object",
+      "required": ["primary_language"],
+      "additionalProperties": false,
+      "properties": {
+        "primary_language": {
+          "type": "string",
+          "description": "Selects guidelines/<primary_language>/ (architecture.md §5). Must match a folder that exists under the installed framework's guidelines/."
+        },
+        "guidelines_exclude": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional. Names of shared guideline categories to skip loading (e.g. [\"naming-conventions\"]). Default behavior with this omitted: load all 5 shared root guidelines + everything in guidelines/<primary_language>/."
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "description": "Quality gates (architecture.md §8). compile and tests cannot be disabled — they are the minimum bar for a feature to reach done.",
+      "additionalProperties": false,
+      "properties": {
+        "compile": { "type": "boolean", "const": true, "default": true },
+        "lint": { "type": "boolean", "default": true },
+        "dependency_boundary": { "type": "boolean", "default": true },
+        "custom": { "type": "boolean", "default": false, "description": "Set true only if the project has a Gate 4 custom script (architecture.md §15 open item: exact discovery convention still TBD — document it in context_project.md when configured)." },
+        "tests": { "type": "boolean", "const": true, "default": true },
+        "dead_code": { "type": "boolean", "default": true },
+        "security": { "type": "boolean", "default": false, "description": "Proposed 7th gate (govulncheck for Go, etc.) — off by default until confirmed per project." }
+      }
+    }
+  }
+}
