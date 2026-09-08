@@ -62,6 +62,15 @@
 > papel equivalente ao `archive/` do OpenSpec. `state.json` ganha `initiatives[]` e
 > `features[].initiative_id`; o antigo `artifacts` de projeto (brief/PRD soltos) é descontinuado
 > a favor de `initiatives[].artifacts` (§13).
+> v14: dois achados testando de verdade (instalação + `fullcast-init` num projeto zerado, via
+> Codex). Bug: o `context_project.md` que `init.sh` escrevia era hardcoded em inglês mesmo com
+> `--language pt-BR` — só `config.yaml` respeitava o idioma. Corrigido: os dois arquivos, no
+> idioma escolhido. Gap: `fullcast-init` perguntava pouco e silenciosamente assumia `en`/`go`
+> quando nada respondia — vira entrevista de verdade (mesmo padrão do `fullcast-pm`, uma
+> pergunta por vez) só quando o projeto é greenfield de verdade (sem código, sem
+> `context_project.md` populado); com código existente, a stack é inferida de sinais reais
+> (`go.mod`, `package.json`, etc.) em vez de perguntada. Novo `--project-type` no `init.sh` e
+> `fullcast-init/references/bootstrap-interview.md` com o detalhe.
 
 ## 1. Objetivo
 
@@ -574,9 +583,13 @@ Isso vale igual pra qualquer metodologia que atuar sobre o mesmo repo — é por
 de `.fullcast/`.
 
 **Ciclo de vida:**
-- Criado por `fullcast-init`: se o projeto já tem código, roda a descoberta em duas camadas
-  (baseline + ampla, como o `spec-writer` original já fazia) uma única vez e grava aqui; se é
-  greenfield, começa com um esqueleto mínimo (stack pretendida a partir do `config.yaml`).
+- Criado por `fullcast-init`: se o projeto já tem código, infere a stack de sinais reais
+  (`go.mod`, `package.json`, etc. — `fullcast-init/references/bootstrap-interview.md`) e roda a
+  descoberta em duas camadas (baseline + ampla, como o `spec-writer` original já fazia) uma única
+  vez; se é greenfield de verdade (sem código, sem `context_project.md` populado), faz uma
+  entrevista curta (idioma, o que está construindo, tipo de projeto, stack) em vez de assumir os
+  defaults do script (`en`/`go`) em silêncio — o esqueleto escrito reflete essas respostas, no
+  idioma escolhido, não só `config.yaml`.
 - **Documento vivo, não estático:** Tech Lead e Developer podem *acrescentar* uma entrada quando
   descobrem um padrão novo que não estava documentado (ex.: uma convenção de nomenclatura que só
   apareceu na feature 5). Nunca reescrevem o documento inteiro — só complementam, igual o `specs/`

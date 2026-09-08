@@ -21,17 +21,22 @@ needs the steps).
    If it exists, tell the user and ask whether to inspect it (point them at
    `fullcast-status`) or reinitialize with `--force`. Never silently overwrite.
 
-2. **Ask what isn't obvious from context:**
-   - Language for generated content: `en` or `pt-BR`. Default `en` if the user doesn't say.
-   - Primary stack language for this project (`go`, `java`, `nextjs`, ...). If the repo
-     already has code, infer it from the dominant language instead of asking.
+2. **Read the project before asking anything.** Scan for existing code and an existing
+   `context_project.md`. Full detail (what to scan for, the stack-detection table, the
+   bootstrap interview script for when the repo is genuinely empty): `references/
+   bootstrap-interview.md`. Load it now — this step needs it. Short version: a
+   non-empty repo gets its stack inferred, never asked for; a genuinely empty one gets
+   a short interview (language, one-line description, project type, primary stack) —
+   never silently defaulted.
 
 3. **Run the script:**
    ```
-   scripts/init.sh --language <en|pt-BR> --stack <primary_language> [--force]
+   scripts/init.sh --language <en|pt-BR> --stack <primary_language> \
+     --project-type "<answer from step 2>" [--force]
    ```
    This creates `.fullcast/{config.yaml,state.json}` and, if it doesn't already
-   exist, a starter `context_project.md` at the project root. No initiative folder yet
+   exist, a starter `context_project.md` at the project root, **written in the chosen
+   `--language`** — the whole file, not just `config.yaml`. No initiative folder yet
    — `fullcast-pm` creates the first one (`.fullcast/<initiative-id>-<slug>/`,
    `docs/architecture.md` §21) the first time it runs.
 
@@ -46,11 +51,20 @@ needs the steps).
 5. **Report** what was created and the two next steps: run `fullcast-pm` to start
    discovery/requirements, or `fullcast-status` to check state at any time.
 
+## Always / Never
+
+Always: read the repo (code + any existing `context_project.md`) before asking
+anything it would already answer; interview one question at a time when the project is
+genuinely greenfield; write `context_project.md` in the project's chosen `language`,
+not just `config.yaml`.
+
+Never: default `language`/`stack`/project type silently when nothing in the repo
+answers them — ask; overwrite an existing `.fullcast/` without explicit confirmation;
+touch an existing `context_project.md`'s content beyond the discovery append in step 4
+— it's a living document owned collectively by every role, not by `init`.
+
 ## Notes
 
 - Never hand-edit `state.json`'s structure to add ad-hoc fields — check
   `schema/state.schema.json` (in the installed framework) first; it documents every
   field this framework's skills expect.
-- This skill never touches an existing `context_project.md`'s content beyond the
-  discovery append in step 4 — it's a living document owned collectively by every role,
-  not by `init`.

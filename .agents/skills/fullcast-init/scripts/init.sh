@@ -4,9 +4,12 @@
 # idempotent, must not leave the project half-scaffolded if it fails midway).
 #
 # Usage:
-#   init.sh [--language en|pt-BR] [--stack <primary_language>] [--force]
+#   init.sh [--language en|pt-BR] [--stack <primary_language>] [--project-type <type>] [--force]
 #
-# Defaults: --language en --stack go
+# Defaults: --language en --stack go --project-type "(fill in)"
+# The caller (fullcast-init's SKILL.md) is expected to run its bootstrap interview
+# FIRST and pass real answers here — the defaults exist only for direct manual use of
+# this script, not as a silent fallback the skill should rely on.
 # --force overwrites an existing .fullcast/ (asks nothing; the caller — the model
 # running this skill — is responsible for confirming with the user first).
 
@@ -14,12 +17,14 @@ set -eu
 
 LANGUAGE="en"
 STACK="go"
+PROJECT_TYPE=""
 FORCE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --language) LANGUAGE="$2"; shift 2 ;;
     --stack) STACK="$2"; shift 2 ;;
+    --project-type) PROJECT_TYPE="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     *) echo "init.sh: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -29,6 +34,13 @@ case "$LANGUAGE" in
   en|pt-BR) ;;
   *) echo "init.sh: --language must be 'en' or 'pt-BR', got '$LANGUAGE'" >&2; exit 2 ;;
 esac
+
+if [ -z "$PROJECT_TYPE" ]; then
+  case "$LANGUAGE" in
+    pt-BR) PROJECT_TYPE="(preencher)" ;;
+    *) PROJECT_TYPE="(fill in)" ;;
+  esac
+fi
 
 ROOT_DIR="$(pwd)"
 STATE_DIR="$ROOT_DIR/.fullcast"
@@ -80,7 +92,47 @@ cat > "$STATE_DIR/state.json" <<EOF
 EOF
 
 if [ ! -f "$CONTEXT_FILE" ]; then
-  cat > "$CONTEXT_FILE" <<EOF
+  if [ "$LANGUAGE" = "pt-BR" ]; then
+    cat > "$CONTEXT_FILE" <<EOF
+# Contexto do projeto
+
+*Documento vivo. pm/tech-lead/developer/evaluator vão complementando; ninguém reescreve por
+completo (architecture.md §11). Não é amarrado a uma metodologia só — compartilhado por
+qualquer metodologia que tocar este repo.*
+
+## Regra de prioridade
+
+Se este arquivo já tiver conteúdo em "Arquitetura" ou "Padrões descobertos" abaixo, esse
+conteúdo é autoritativo — nenhum papel deve substituí-lo por um padrão genérico. Só enquanto
+este arquivo estiver genuinamente vazio (greenfield de verdade) é que a preferência declarada
+pelo usuário manda; assim que ele responder, a resposta é escrita aqui e vira a próxima entrada
+autoritativa (architecture.md §11).
+
+## Stack
+
+- Linguagem principal: $STACK (ver \`.fullcast/config.yaml\`)
+- Tipo de projeto: $PROJECT_TYPE
+- (preencher conforme o código crescer: framework, banco de dados, estratégia de auth, estilo
+  de API, abordagem de validação, framework de testes, tratamento de erro, estrutura de pastas)
+
+## Arquitetura
+
+(vazio — greenfield em $NOW. A primeira passada do tech-lead pergunta o estilo de arquitetura
+explicitamente — Clean Architecture, hexagonal, camadas simples, o que o usuário nomear — antes
+de qualquer outra coisa, e escreve a resposta aqui)
+
+## Padrões descobertos
+
+(vazio — este é um projeto greenfield em $NOW; a primeira passada do tech-lead vai rodar
+descoberta de padrões assim que existir código de verdade, e vai adicionar achados aqui)
+
+## Comandos de Gate
+
+(vazio — developer preenche na primeira vez que o comando de cada Gate for descoberto, pra
+nunca ser redescoberto por task; ver architecture.md §7/§8)
+EOF
+  else
+    cat > "$CONTEXT_FILE" <<EOF
 # Project context
 
 *Living document. pm/tech-lead/developer/evaluator append to it; nobody rewrites it wholesale
@@ -98,6 +150,7 @@ authoritative from then on (architecture.md §11).
 ## Stack
 
 - Primary language: $STACK (see \`.fullcast/config.yaml\`)
+- Project type: $PROJECT_TYPE
 - (fill in as the codebase grows: framework, database, auth strategy, API style,
   validation approach, testing framework, error handling, folder structure)
 
@@ -117,6 +170,7 @@ will run pattern discovery once real code exists and append findings here)
 (empty — developer fills this in the first time each Gate's command is discovered,
 so it is never rediscovered per task; see architecture.md §7/§8)
 EOF
+  fi
 fi
 
 # .lock files are per-machine, per-process state (a PID meaningless to anyone
