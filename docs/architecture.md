@@ -1,4 +1,4 @@
-# Arquitetura do sdd-framework-aifullpeople
+# Arquitetura do sdd-framework-fullcast
 
 > Documento de design (meta-PRD do próprio framework). Nada aqui foi implementado ainda — este
 > arquivo alinha decisões antes de criar qualquer skill, template ou schema.
@@ -7,26 +7,18 @@
 > tokens v1.
 > v4: Gates de qualidade (§8), `context_project.md` (§11), revisão crítica final — `state.json`
 > ganha `real_difficulty`/`tokens_estimated`, `config.yaml` consolidado, gaps sinalizados em §16
-> (Batch Mode, Foundation Features, versionamento de `.aifullpeople/` no git).
+> (Batch Mode, Foundation Features, versionamento de `.fullcast/` no git).
 > v5: `contract.md` (§7) — terceiro artefato do `tech-lead`, contrato de comportamento com gate de
 > cobertura de AC; unifica com Gates (§8) e `context_project.md` (§11) em vez de duplicar conceito.
 > v6: Fase 1 implementada — as 7 skills, scripts, schemas e guidelines existem de verdade em
 > `.agents/skills/`, `guidelines/`, `schema/` (symlinked em `.claude/skills/`). 3 itens do §16
-> resolvidos na implementação (Foundation Features, versionamento de `.aifullpeople/` no git,
+> resolvidos na implementação (Foundation Features, versionamento de `.fullcast/` no git,
 > cache de comando de Gate) — ver §16 para o que ainda ficou em aberto.
 > v7: Human-in-the-loop (§15) — aprovação humana explícita em cada transição de estágio,
 > obrigatória por padrão (`config.yaml: human_in_the_loop`), separada dos Gates de qualidade
 > (julgamento humano vs. ferramenta automática). Descoberta rodando o exemplo `wordcount`
 > end-to-end: o pipeline original rodava autônomo do início ao fim sem nenhum checkpoint.
-> v8: guidance de stack deixa de ser só `guidelines/<stack>/*.md` escrito à mão — vira
-> resolvido, por padrão, a partir de uma Agent Skill instalada `<primary_language>-pro` (ex.:
-> `golang-pro`, movida de `exemplos/` pra `.agents/skills/stack/`, com symlink de referência em
-> `.agents/skills/`), usada exatamente como instalada.
-> `guidelines/<primary_language>/` continua existindo como opção — só passa a ser o caminho
-> explicitamente customizado (`stack.guidance_source: guidelines`), não mais o default nem algo
-> que o framework mantém pronto por stack. `guidelines/go/` foi removido; os 5 arquivos
-> compartilhados da raiz continuam valendo sempre, independente da fonte escolhida.
-> v8: `.aifullpeople/` reorganizado por papel (`pm/`, `features/<id>/{tech-lead,developer,evaluator}/`
+> v8: `.fullcast/` reorganizado por papel (`pm/`, `features/<id>/{tech-lead,developer,evaluator}/`
 > — §12) em vez de por tipo de arquivo, porque ficava difícil ver quem produziu o quê. Tasks
 > ganham campo `phase` no `state.json` e nos relatórios do developer (§13) — as fases que o
 > tech-lead define em `tasks.md` desapareciam assim que a execução começava.
@@ -40,8 +32,8 @@
 > v10: renomeado `qa` → `evaluator` em todo o framework. Três adições, todas do `developer`
 > fazendo passada diferente (não papel novo): lock de execução por PID (§18, evita duas
 > execuções concorrentes na mesma feature/projeto), execução recomendada como subagente por
-> papel (§17), `aifullpeople-developer-codereview` (§20) fechando o gap de code review real
-> (nada consultava `guidelines/*.md` até agora) e `aifullpeople-developer-fix-runner` (§19)
+> papel (§17), `fullcast-developer-codereview` (§20) fechando o gap de code review real
+> (nada consultava `guidelines/*.md` até agora) e `fullcast-developer-fix-runner` (§19)
 > pra correção cirúrgica pós-reprovação do `evaluator`, com HiTL obrigatório em cada ciclo.
 > v11: regra de prioridade explícita (§11) — `context_project.md` populado manda; greenfield
 > vazio, quem manda é o que o usuário disser (inclusive estilo de arquitetura, ex.: Clean
@@ -51,16 +43,35 @@
 > tudo que existir na pasta do stack, não um schema fixo de 5 arquivos) — só não estava
 > explícito; exemplo de `nextjs/` mostra categorias extras (`component-patterns.md`,
 > `accessibility.md`, `state-management.md`) que Go/Java não têm e não precisam ter.
+> v12: guidance de stack deixa de ser só `guidelines/<stack>/*.md` escrito à mão — vira
+> resolvido, por padrão, a partir de uma Agent Skill instalada `<primary_language>-pro` (ex.:
+> `golang-pro`, movida de `exemplos/` pra `.agents/skills/stack/`, com symlink de referência em
+> `.agents/skills/`), usada exatamente como instalada.
+> `guidelines/<primary_language>/` continua existindo como opção — só passa a ser o caminho
+> explicitamente customizado (`stack.guidance_source: guidelines`), não mais o default nem algo
+> que o framework mantém pronto por stack. `guidelines/go/` foi removido; os 5 arquivos
+> compartilhados da raiz continuam valendo sempre, independente da fonte escolhida.
+> v13: terceiro nível de hierarquia acima de feature — **initiative** (§21), `I01`/`I02`...,
+> `.fullcast/<id>-slug/{pm,features/<id>/...}`. Uma por ciclo de PRD do `pm` por
+> padrão (fallback: `tech-lead` cria se um PRD chegar sem passar pelo `pm`). Branch por
+> initiative vira **sugestão** (nunca automática, `config.yaml: git.suggest_branch`); worktree
+> (`isolation: "worktree"` da Agent tool) vira **obrigatório** em toda invocação de papel como
+> subagente (§17), não só quando há paralelismo. Ao fechar a última feature de uma initiative,
+> `evaluator` pergunta se quer gerar `changesfullcast/<data>-<id>-<slug>.md` (skill nova
+> `fullcast-changes`, §21.4) — resumo na raiz do projeto, fora de `.fullcast/`,
+> papel equivalente ao `archive/` do OpenSpec. `state.json` ganha `initiatives[]` e
+> `features[].initiative_id`; o antigo `artifacts` de projeto (brief/PRD soltos) é descontinuado
+> a favor de `initiatives[].artifacts` (§13).
 
 ## 1. Objetivo
 
 Framework de Spec-Driven Development (SDD) que:
 
 - Tem uma **máquina de estado canônica** única controlando em que etapa cada feature está.
-- Usa **uma metodologia própria** (`aifullpeople`), merge deliberado de BMAD e OpenSpec.
+- Usa **uma metodologia própria** (`fullcast`), merge deliberado de BMAD e OpenSpec.
 - **Não é exclusivo do Claude Code** — as skills precisam funcionar também em Codex, GitHub
   Copilot e outros agentes de codificação (§2).
-- É configurável por projeto: idioma (`en`/`pt-BR`), tudo dentro de **`.aifullpeople/`** no
+- É configurável por projeto: idioma (`en`/`pt-BR`), tudo dentro de **`.fullcast/`** no
   repo de destino.
 - Nasce com foco em Go, com guidelines organizadas por stack + um conjunto compartilhado (§5).
 - Exige **aprovação humana explícita** em cada transição de estágio — nenhum artefato avança
@@ -82,8 +93,8 @@ um arquivo opcional `agents/openai.yaml` com metadados específicos daquele runt
 exatamente essa convenção em vez de inventar a nossa:
 
 - **Fonte canônica:** `.agents/skills/<nome-da-skill>/SKILL.md`, uma pasta por skill (cada papel
-  vira uma skill própria: `aifullpeople-pm`, `aifullpeople-tech-lead`, `aifullpeople-developer`,
-  `aifullpeople-evaluator`, mais as `core` — §4).
+  vira uma skill própria: `fullcast-pm`, `fullcast-tech-lead`, `fullcast-developer`,
+  `fullcast-evaluator`, mais as `core` — §4).
 - **Conteúdo agnóstico de ferramenta:** o corpo de cada `SKILL.md` é escrito em instrução
   simples — "leia o arquivo X", "rode `git diff`", "escreva Y" — nunca referenciando nomes de
   tools específicos do Claude Code (nada de "use a tool Read"). Qualquer agente que leia/escreva
@@ -100,9 +111,33 @@ exatamente essa convenção em vez de inventar a nossa:
   rodarem lá — se algo não for reconhecido, ajustamos o `SKILL.md` daquele papel especificamente,
   sem mudar a estrutura geral.
 
+### 2.1 Instalação num projeto novo
+
+`install.sh` (raiz deste repo) faz a instalação num comando só — ver `README.md` pro passo a
+passo objetivo. Recebe o caminho do projeto de destino (existente ou ainda inexistente) e:
+
+1. Copia `.agents/skills/fullcast-*` (as 10 skills de papel/utilitário) e
+   `.agents/skills/stack/` (skills de linguagem, ex. `golang-pro`, §5.2) pro
+   `.agents/skills/` do projeto de destino.
+2. Copia `guidelines/` (os 5 compartilhados; `guidelines/<stack>/` não é copiado — é o caminho
+   customizado, §5.2, quem quiser usar em vez de uma skill escreve à mão no destino).
+3. Cria os symlinks de referência em `.claude/skills/` — um por skill copiada, mais
+   `.claude/skills/stack` apontando pra `.agents/skills/stack` (mesmo padrão descrito acima e em
+   §5.2; sem eles o Claude Code não descobre as skills).
+4. Copia `schema/` (documentação de referência pro modelo consultar antes de editar
+   config/state à mão — não é lido por nenhuma skill em runtime, mas é pequeno e útil).
+
+Depois de rodar o script, falta só um passo manual: rodar `fullcast-init` dentro do projeto de
+destino (via Claude Code) — cria `.fullcast/` e `context_project.md` na raiz dele. O script nunca
+toca nisso, só nos arquivos do framework em si — reflete a mesma separação de sempre entre
+"framework instalado" e "estado do projeto" (§12).
+
+Seguro rodar de novo — sobrescreve só os arquivos do framework, nunca `.fullcast/` nem o código
+do projeto.
+
 ## 3. Merge BMAD + OpenSpec — de onde vem cada peça
 
-| Ideia | Origem | Como entra no `aifullpeople` |
+| Ideia | Origem | Como entra no `fullcast` |
 |---|---|---|
 | Papéis com responsabilidade clara | BMAD (Analyst/PM/Architect/SM/Dev/QA) | 4 papéis (§4): PM, Tech Lead, Developer, Evaluator |
 | PRD único com problema/oportunidade | BMAD (PM) | Cobre o "porquê" do `proposal.md` do OpenSpec — não duplicamos esse artefato |
@@ -122,8 +157,8 @@ qualquer agente (§2), não só por quem pegou a referência do filme.
 
 | Papel (id técnico) | Persona (flavor) | Por quê | Estágios | Produz |
 |---|---|---|---|---|
-| `pm` | **Miguel O'Hara** | Guardião do "canônico" — define o que precisa ser verdade (requisitos) | `discovery`, `requirements` | `.aifullpeople/pm/brief.md`, `.aifullpeople/pm/prd.md` |
-| `tech-lead` | **Peter B. Parker** | O mentor experiente que transforma visão em plano técnico concreto | `design`, `tasks` | `features/<id>/tech-lead/{design,tasks,contract}.md` (§7) |
+| `pm` | **Miguel O'Hara** | Guardião do "canônico" — define o que precisa ser verdade (requisitos) | `discovery`, `requirements` | `<initiative>/pm/brief.md`, `<initiative>/pm/prd.md` (§21) |
+| `tech-lead` | **Peter B. Parker** | O mentor experiente que transforma visão em plano técnico concreto | `design`, `tasks` | `<initiative>/features/<id>/tech-lead/{design,tasks,contract}.md` (§7) |
 | `developer` | **Miles Morales** | Quem efetivamente dá o "salto de fé" e constrói | `implementation` | código, commits (1 por task), micro-relatórios por task |
 | `evaluator` | **Gwen Stacy** | Olhar de fora, precisão, encontra o que quebra antes de "canonizar" como pronto | `validation` | re-checagem de critérios de aceite, aprova ou devolve pro Developer |
 
@@ -136,10 +171,10 @@ falhou — o próprio ciclo que já existia no diagrama de estados
 (`validation --> implementation: regressão encontrada`).
 
 Dois papéis adicionais **não fazem** parte deste ciclo principal — são o `developer` (Miles
-Morales) fazendo passadas diferentes, sem persona nova: `aifullpeople-developer-codereview`
+Morales) fazendo passadas diferentes, sem persona nova: `fullcast-developer-codereview`
 (§20) roda entre os Gates e o handoff, revisando qualidade de código contra `guidelines/*.md`
 (algo que nem os Gates nem o `evaluator` fazem — ver §20 pra entender por quê); e
-`aifullpeople-developer-fix-runner` (§19), que entra quando `evaluator` reprova, fazendo a
+`fullcast-developer-fix-runner` (§19), que entra quando `evaluator` reprova, fazendo a
 correção cirúrgica só dos itens que falharam em vez de reprocessar `tasks.md` inteiro de novo.
 
 ## 5. Estrutura do framework (este repo)
@@ -162,30 +197,30 @@ somar os números ali mesmo não pede um script à parte).
 
 | Script | Skill dona | Por quê é script |
 |---|---|---|
-| `init.sh` | `aifullpeople-init` | Cria `.aifullpeople/` (pastas, `config.yaml`, `state.json` inicial) — mexe no filesystem em bloco, quer ser idempotente e não deixar o projeto pela metade se falhar no meio |
-| `commit.sh` | `aifullpeople-developer` | Git é externo e o resultado fica no histórico pra sempre — `git add <arquivos específicos> && git commit` sempre da mesma forma, sem depender do modelo lembrar de não usar `git add -A` |
-| `compute_waves.py` | `aifullpeople-pm` | Ordenação topológica + detecção de ciclo no grafo de dependências do PRD — algoritmo, não é "olhar e somar 1" |
-| `estimate_tokens.sh` | `aifullpeople-developer` | Contagem exata de bytes (`wc -c`) — modelo contando caractere é impreciso e caro à toa |
+| `init.sh` | `fullcast-init` | Cria `.fullcast/` (pastas, `config.yaml`, `state.json` inicial) — mexe no filesystem em bloco, quer ser idempotente e não deixar o projeto pela metade se falhar no meio |
+| `commit.sh` | `fullcast-developer` | Git é externo e o resultado fica no histórico pra sempre — `git add <arquivos específicos> && git commit` sempre da mesma forma, sem depender do modelo lembrar de não usar `git add -A` |
+| `compute_waves.py` | `fullcast-pm` | Ordenação topológica + detecção de ciclo no grafo de dependências do PRD — algoritmo, não é "olhar e somar 1" |
+| `estimate_tokens.sh` | `fullcast-developer` | Contagem exata de bytes (`wc -c`) — modelo contando caractere é impreciso e caro à toa |
 
 Nenhum script é compartilhado entre skills — cada um vive dentro da skill que o usa
-(`aifullpeople-X/scripts/`), sem uma pasta `_lib/` central. Sem operação genuinamente comum a
+(`fullcast-X/scripts/`), sem uma pasta `_lib/` central. Sem operação genuinamente comum a
 todas as 7 skills sobrando, essa camada extra de indireção não se paga.
 
 ```
-sdd-framework-aifullpeople/
+sdd-framework-fullcast/
 ├── docs/
 │   └── architecture.md
 ├── .agents/
 │   └── skills/
-│       ├── aifullpeople-init/
+│       ├── fullcast-init/
 │       │   ├── SKILL.md
 │       │   └── scripts/
 │       │       └── init.sh
-│       ├── aifullpeople-status/
+│       ├── fullcast-status/
 │       │   └── SKILL.md
-│       ├── aifullpeople-set-methodology/
+│       ├── fullcast-set-methodology/
 │       │   └── SKILL.md                    # ver §9 — nome trocado de "switch"
-│       ├── aifullpeople-pm/
+│       ├── fullcast-pm/
 │       │   ├── SKILL.md
 │       │   ├── scripts/
 │       │   │   └── compute_waves.py
@@ -193,7 +228,7 @@ sdd-framework-aifullpeople/
 │       │   │   └── prd-sections.md         # as 9 seções detalhadas (hoje dentro do SKILL.md)
 │       │   └── assets/
 │       │       └── brief-template.md
-│       ├── aifullpeople-tech-lead/
+│       ├── fullcast-tech-lead/
 │       │   ├── SKILL.md
 │       │   ├── references/
 │       │   │   ├── design-and-tasks-rules.md
@@ -202,14 +237,14 @@ sdd-framework-aifullpeople/
 │       │       ├── design-template.md
 │       │       ├── tasks-template.md
 │       │       └── contract-template.md
-│       ├── aifullpeople-developer/
+│       ├── fullcast-developer/
 │       │   ├── SKILL.md
 │       │   ├── scripts/
 │       │   │   ├── commit.sh
 │       │   │   └── estimate_tokens.sh
 │       │   └── assets/
 │       │       └── task-report-template.md
-│       └── aifullpeople-evaluator/
+│       └── fullcast-evaluator/
 │           ├── SKILL.md
 │           └── references/
 │               └── evaluation-checklist.md
@@ -224,7 +259,7 @@ sdd-framework-aifullpeople/
 │                                    # (§5.2). Não é mais mantido/populado pelo framework.
 ├── .agents/skills/
 │   ├── stack/                      # skills de linguagem/stack agrupadas, separadas das
-│   │   │                            # aifullpeople-* — todo *-pro futuro (java-pro, nextjs-pro)
+│   │   │                            # fullcast-* — todo *-pro futuro (java-pro, nextjs-pro)
 │   │   │                            # mora aqui, conteúdo real
 │   │   └── golang-pro/              # a fonte concreta de guidance pra Go, por padrão (§5.2) —
 │   │       ├── SKILL.md             # skill de terceiro (github.com/Jeffallan), usada como está,
@@ -232,7 +267,7 @@ sdd-framework-aifullpeople/
 │   │                                 # testing, project-structure
 │   ├── golang-pro -> stack/golang-pro   # symlink de referência — Claude Code só descobre
 │   │                                       # skill em .agents/skills/<nome>/, não em subpasta
-│   └── aifullpeople-*/              # as skills do próprio framework (ver árvore completa acima)
+│   └── fullcast-*/              # as skills do próprio framework (ver árvore completa acima)
 └── .claude/skills/                   # espelha .agents/skills/ inteiro via symlink, nos dois
                                        # níveis: .claude/skills/stack -> ../../.agents/skills/stack
                                        # (organização) e .claude/skills/golang-pro ->
@@ -275,17 +310,17 @@ vamos usar de fato pra montar cada uma na Fase 1 — não confiar só na minha m
 ### 5.2 De onde vem o guidance concreto de cada stack
 
 v8 (ver changelog): deixou de ser `guidelines/<stack>/*.md` mantido à mão pelo framework — passou a
-ser **resolvido**, por `.aifullpeople/config.yaml: stack`:
+ser **resolvido**, por `.fullcast/config.yaml: stack`:
 
 - **`guidance_source: skill`** (default) — usa a Agent Skill instalada
   `<primary_language>-pro` (`guidance_skill` sobrescreve o nome quando não segue a convenção). A
   skill é lida **exatamente como instalada** — este framework nunca edita o conteúdo dela. Todo
   skill de stack (Go, Java, Next.js, etc.) mora fisicamente em `.agents/skills/stack/<nome>-pro/`
-  — pasta própria, separada das `aifullpeople-*`, pra não misturar "skill do framework" com "skill
+  — pasta própria, separada das `fullcast-*`, pra não misturar "skill do framework" com "skill
   de linguagem". `.agents/skills/<nome>-pro` é só um **symlink de referência** pra dentro de
   `stack/` (necessário porque a convenção de descoberta do Claude Code é flat, um nível só —
   não escaneia subpasta), espelhado em `.claude/skills/<nome>-pro` do mesmo jeito que as
-  `aifullpeople-*` já são. Hoje só existe uma: `golang-pro` (terceiro, github.com/Jeffallan,
+  `fullcast-*` já são. Hoje só existe uma: `golang-pro` (terceiro, github.com/Jeffallan,
   movida de `exemplos/` na v8), cobrindo Go via `SKILL.md` (Core Workflow, Constraints) +
   `references/{concurrency,generics,interfaces,testing,project-structure}.md`. Java/Next.js ainda
   não têm skill equivalente instalada — usar `guidance_source: guidelines` pra esses até existir
@@ -295,8 +330,8 @@ ser **resolvido**, por `.aifullpeople/config.yaml: stack`:
   `guidelines/go/` nem esqueleto pra `java/`/`nextjs/`) — é o caminho **customizado**, pra quem
   não tem (ou não quer) uma skill `*-pro` pra aquele stack.
 
-Nenhuma skill do framework (`aifullpeople-tech-lead`, `aifullpeople-developer`,
-`aifullpeople-developer-codereview`) assume a forma exata do que a skill de stack expõe — leem o
+Nenhuma skill do framework (`fullcast-tech-lead`, `fullcast-developer`,
+`fullcast-developer-codereview`) assume a forma exata do que a skill de stack expõe — leem o
 que tiver (`SKILL.md` + `references/`), do mesmo jeito que já liam "o que tiver na pasta" no
 mecanismo antigo. O único acoplamento é a convenção de nome (`<primary_language>-pro`) e a
 resolução via `config.yaml`. Os 5 compartilhados da raiz **sempre** carregam, com as duas fontes —
@@ -318,13 +353,13 @@ stateDiagram-v2
 
 | Stage | Papel | Artefato |
 |---|---|---|
-| `discovery` | PM | `.aifullpeople/pm/brief.md` |
-| `requirements` | PM | `.aifullpeople/pm/prd.md` |
-| `design` | Tech Lead | `features/<id>/tech-lead/design.md` |
-| `tasks` | Tech Lead | `features/<id>/tech-lead/{tasks,contract}.md` (§7) + tasks no `state.json` |
-| `implementation` | Developer | commits (1/task) + `features/<id>/developer/<task-id>.md` |
+| `discovery` | PM | `<initiative>/pm/brief.md` (§21) |
+| `requirements` | PM | `<initiative>/pm/prd.md` (§21) |
+| `design` | Tech Lead | `<initiative>/features/<id>/tech-lead/design.md` |
+| `tasks` | Tech Lead | `<initiative>/features/<id>/tech-lead/{tasks,contract}.md` (§7) + tasks no `state.json` |
+| `implementation` | Developer | commits (1/task) + `<initiative>/features/<id>/developer/<task-id>.md` |
 | `validation` | Evaluator | percorre `contract.md` (§7); aprova → `done`, ou reprova → volta pro Developer |
-| `done` | — | `features/<id>/evaluator/{summary,difficulty,tokens}.md` + `.aifullpeople/report.md` atualizado |
+| `done` | — | `<initiative>/features/<id>/evaluator/{summary,difficulty,tokens}.md` + `.fullcast/report.md` atualizado |
 
 ## 7. Contrato de comportamento (`contract.md`)
 
@@ -374,7 +409,7 @@ vender.
 **Onde fica o conteúdo detalhado:** o template completo (schema de item, catálogo de superfícies,
 guard-rails, exemplo trabalhado) que você colou é grande demais pra este documento de arquitetura
 — aqui é onde a decisão é registrada, não o manual da skill. Ele vira
-`aifullpeople-tech-lead/references/contract-rules.md` na Fase 1 (§5.1 já previa exatamente esse
+`fullcast-tech-lead/references/contract-rules.md` na Fase 1 (§5.1 já previa exatamente esse
 uso de `references/`: detalhe pesado, carregado só quando o passo de gerar o contrato precisa
 dele), com "spec-writer"/`spec.md`/`plan.md` do texto original traduzidos pra `tech-lead`/
 `design.md`/`tasks.md`.
@@ -382,7 +417,7 @@ dele), com "spec-writer"/`spec.md`/`plan.md` do texto original traduzidos pra `t
 `state.json` ganha um terceiro artefato por feature (ver §13):
 
 ```json
-"contract": { "path": ".aifullpeople/features/F01-cadastro-usuario/tech-lead/contract.md", "status": "done" }
+"contract": { "path": ".fullcast/I01-cadastro-usuario/features/F01-cadastro-usuario/tech-lead/contract.md", "status": "done" }
 ```
 
 ## 8. Gates de qualidade
@@ -395,7 +430,7 @@ mais caro/amplo, então nada roda à toa se algo básico já quebrou):
 | 1 | Compilação/contrato | O projeto compila; contratos (schema de API, proto, etc.) são válidos | `go build ./...`, validação de contrato se houver |
 | 2 | Lint | Estilo e problemas estáticos | `golangci-lint run` (ESLint é o equivalente em JS/TS — o nome do gate é genérico, a ferramenta é por stack) |
 | 3 | Fronteira de dependências/arquitetura | Import indevido entre camadas, ciclo de pacote | equivalente Go ao Dependency Cruiser (ex.: `depguard`, regra de import por camada) |
-| 4 | Script próprio do projeto | Qualquer checagem específica daquele projeto que não é genérica de stack | descoberto em runtime (`Makefile`, script em `.aifullpeople/config.yaml: gates.custom`) |
+| 4 | Script próprio do projeto | Qualquer checagem específica daquele projeto que não é genérica de stack | descoberto em runtime (`Makefile`, script em `.fullcast/config.yaml: gates.custom`) |
 | 5 | Testes automatizados | Suite de testes passa | `go test ./...` |
 | 6 | Código morto/dependências não usadas | Função/import/dependência sem uso | `staticcheck`/`deadcode`, `go mod tidy -diff` |
 
@@ -424,7 +459,7 @@ do projeto, mostrado por completo no §12.
 
 ## 9. Lock de metodologia por feature
 
-Sua regra: se uma feature começou com OpenSpec (ou BMAD, ou `aifullpeople`), ela **termina** com
+Sua regra: se uma feature começou com OpenSpec (ou BMAD, ou `fullcast`), ela **termina** com
 essa mesma metodologia — trocar a metodologia ativa não migra trabalho em andamento.
 
 Implementação: cada feature grava seu próprio `methodology` no `state.json` **no momento em que é
@@ -433,7 +468,7 @@ criada** (entrada no estágio `discovery`/`requirements`), imutável depois diss
 ```json
 {
   "id": "F01",
-  "methodology": "aifullpeople",
+  "methodology": "fullcast",
   "stage": "tasks",
   ...
 }
@@ -441,12 +476,12 @@ criada** (entrada no estágio `discovery`/`requirements`), imutável depois diss
 
 - `config.yaml: methodology` é só o **default para features novas** — não é um interruptor global
   retroativo.
-- A skill que eu tinha chamado de `aifullpeople-switch-methodology` foi renomeada pra
-  **`aifullpeople-set-methodology`**: ela só atualiza esse default. Nunca toca em features
+- A skill que eu tinha chamado de `fullcast-switch-methodology` foi renomeada pra
+  **`fullcast-set-methodology`**: ela só atualiza esse default. Nunca toca em features
   existentes.
 - Cada papel (`pm`, `tech-lead`, `developer`, `evaluator`), ao agir sobre uma feature específica, lê o
   `methodology` **daquela feature** no `state.json` — não o default do config — antes de decidir
-  qual conjunto de artefatos/nomenclatura usar. Hoje só existe o pack `aifullpeople`, então isso é
+  qual conjunto de artefatos/nomenclatura usar. Hoje só existe o pack `fullcast`, então isso é
   uma trava de segurança que já nasce pronta para quando (se) BMAD/OpenSpec puros existirem como
   packs alternativos.
 - Uma feature só pode ser marcada `done` pela mesma metodologia que a abriu. Tentar rodar um papel
@@ -459,7 +494,7 @@ Sua observação era: gerar incrementalmente a cada task, e um resumo no final �
 existe no `state.json` (task → feature → projeto):
 
 ```
-.aifullpeople/
+.fullcast/
 ├── report.md                              # nível PROJETO — atualizado a cada feature concluída
 └── features/
     └── F01-cadastro-usuario/
@@ -472,7 +507,7 @@ existe no `state.json` (task → feature → projeto):
             └── tokens.md
 ```
 
-**Nível task** (`features/<id>/developer/<task-id>.md`, gerado pelo Developer ao terminar cada task):
+**Nível task** (`<initiative>/features/<id>/developer/<task-id>.md`, gerado pelo Developer ao terminar cada task):
 descrição da task, arquivos tocados, desvios em relação ao `design.md`/`tasks.md`, e a estimativa
 de tokens daquela task (§10.1).
 
@@ -484,7 +519,7 @@ task):
   retries, redesenhos). É esse par que vira sinal de calibração pro board visual depois.
 - `tokens.md` — soma das estimativas de todas as tasks da feature (§10.1).
 
-**Nível projeto** (`.aifullpeople/report.md`, atualizado toda vez que uma feature chega a `done`):
+**Nível projeto** (`.fullcast/report.md`, atualizado toda vez que uma feature chega a `done`):
 tabela com uma linha por feature (nome, dificuldade estimada/real, tokens estimados, data de
 conclusão) + total acumulado do projeto. É o arquivo que dá o resumo executivo de "o PRD inteiro
 até aqui".
@@ -505,7 +540,7 @@ tokens_estimado(task) = round( (bytes_lidos + bytes_escritos) / 4 )
   próprio texto do micro-relatório da task.
 - `4` = aproximação padrão de caracteres por token em inglês/código (heurística comum, não exata).
 
-Implementado como script (`aifullpeople-developer/scripts/estimate_tokens.sh`, §5) — `wc -c` e uma divisão, sem
+Implementado como script (`fullcast-developer/scripts/estimate_tokens.sh`, §5) — `wc -c` e uma divisão, sem
 motivo pra passar pelo modelo. Funciona em qualquer agente com shell (§2), sem depender de nenhuma
 API do Claude Code. **É deliberadamente um piso, não o total real**: não conta overhead
 de conversa, "thinking", tool calls, nem retries. Cada `tokens.md` termina com a linha: *"Estimativa
@@ -517,13 +552,13 @@ multiplicador de calibração por enquanto — se depois vocês compararem algum
 
 Item que faltava: um documento que capture o contexto de engenharia do projeto — stack, padrões
 de código já em uso, convenções — e que sirva **qualquer metodologia**, não só o pack
-`aifullpeople`. Por isso ele não fica dentro de `.aifullpeople/` (que é específico do pack): fica
+`fullcast`. Por isso ele não fica dentro de `.fullcast/` (que é específico do pack): fica
 na **raiz do projeto de destino**, visível (sem ponto no nome), ao lado da pasta oculta:
 
 ```
 <raiz do projeto>/
 ├── context_project.md
-└── .aifullpeople/
+└── .fullcast/
     └── ...
 ```
 
@@ -536,10 +571,10 @@ persiste essa descoberta uma vez e vira leitura, não redescoberta.
 existe; Tech Lead usa pra decisões de design consistentes com o padrão do projeto; Developer usa
 como as convenções a seguir na implementação; Evaluator usa pra saber qual é o padrão de teste esperado.
 Isso vale igual pra qualquer metodologia que atuar sobre o mesmo repo — é por isso que fica fora
-de `.aifullpeople/`.
+de `.fullcast/`.
 
 **Ciclo de vida:**
-- Criado por `aifullpeople-init`: se o projeto já tem código, roda a descoberta em duas camadas
+- Criado por `fullcast-init`: se o projeto já tem código, roda a descoberta em duas camadas
   (baseline + ampla, como o `spec-writer` original já fazia) uma única vez e grava aqui; se é
   greenfield, começa com um esqueleto mínimo (stack pretendida a partir do `config.yaml`).
 - **Documento vivo, não estático:** Tech Lead e Developer podem *acrescentar* uma entrada quando
@@ -555,44 +590,49 @@ de `.aifullpeople/`.
 - **Greenfield (`context_project.md` ainda vazio de decisões técnicas) → o que o usuário disser
   manda.** Sem código existente pra descobrir nada, a única fonte de verdade é o que foi pedido —
   inclusive estilo de arquitetura (ex.: "usar Clean Architecture"), não só framework/ORM/auth. É
-  exatamente essa pergunta que `aifullpeople-tech-lead` faz no "empty codebase bootstrap"
+  exatamente essa pergunta que `fullcast-tech-lead` faz no "empty codebase bootstrap"
   (`design-and-tasks-rules.md` Step 2), e a resposta vira a próxima entrada de
   `context_project.md` — a partir daí, vira o primeiro caso da regra acima pra toda feature
   seguinte. Não se pergunta de novo.
 
 ## 12. Arquivos no projeto de destino (visão completa)
 
-Organizado **por papel**, não por tipo de arquivo — cada pasta só tem conteúdo de quem a
-gerou, então "quem produziu isso" é a própria localização, sem precisar abrir o arquivo pra
-saber (motivo: no exemplo `wordcount`, tudo misturado numa pasta `report/` só ficou difícil
-de ler de relance quem tinha feito o quê):
+Organizado **por papel dentro de cada initiative** (§21) — cada pasta só tem conteúdo de
+quem a gerou, então "quem produziu isso" é a própria localização, sem precisar abrir o
+arquivo pra saber (motivo: no exemplo `wordcount`, tudo misturado numa pasta `report/`
+só ficou difícil de ler de relance quem tinha feito o quê). `pm/` deixou de operar em
+nível de projeto (v13) — agora é por initiative, porque um projeto pode ter vários
+brief/PRD em paralelo:
 
 ```
 <raiz do projeto>/
 ├── context_project.md
-└── .aifullpeople/
+├── changesfullcast/                 # §21 — só existe depois que a 1ª initiative fecha
+│   └── 2026-09-20-I01-cadastro-usuario.md
+└── .fullcast/
     ├── config.yaml
     ├── state.json
     ├── report.md                    # rollup de projeto — não é de um papel só, fica na raiz
-    ├── pm/                          # pm opera em nível de projeto, não por feature
-    │   ├── brief.md
-    │   └── prd.md
-    └── features/
-        └── F01-cadastro-usuario/
-            ├── tech-lead/
-            │   ├── design.md
-            │   ├── tasks.md
-            │   └── contract.md
-            ├── developer/
-            │   ├── F01-T1.md
-            │   └── F01-T2.md
-            └── evaluator/
-                ├── summary.md
-                ├── difficulty.md
-                └── tokens.md
+    └── I01-cadastro-usuario/         # uma pasta por initiative, direto na raiz de .fullcast/
+        ├── pm/
+        │   ├── brief.md
+        │   └── prd.md
+        └── features/
+            └── F01-cadastro-usuario/
+                ├── tech-lead/
+                │   ├── design.md
+                │   ├── tasks.md
+                │   └── contract.md
+                ├── developer/
+                │   ├── F01-T1.md
+                │   └── F01-T2.md
+                └── evaluator/
+                    ├── summary.md
+                    ├── difficulty.md
+                    └── tokens.md
 ```
 
-Nem `guidelines/` nem a skill de stack são copiados pra dentro de `.aifullpeople/` — ficam
+Nem `guidelines/` nem a skill de stack são copiados pra dentro de `.fullcast/` — ficam
 referenciados a partir do framework instalado (`.agents/skills/`, `guidelines/`, ou caminho
 equivalente conforme a ferramenta), pra evitar cópias divergindo. Os 5 compartilhados da raiz
 carregam sempre por padrão; `guidelines_exclude` é só pra quem quiser desligar uma categoria
@@ -608,15 +648,15 @@ concreto). Pra frontend, os 5 ainda importam (SOLID, anti-patterns, error-handli
 fazem sentido em React/Next.js — só com exemplo diferente), mas não cobrem tudo que o paradigma
 precisa — daí uma eventual pasta `nextjs/` ter também `component-patterns.md`,
 `accessibility.md`, `state-management.md`, que não existem pra Go/Java porque backend não tem esse
-conceito. Nenhuma skill (`aifullpeople-tech-lead`, `aifullpeople-developer`,
-`aifullpeople-developer-codereview`) hardcoda quais arquivos esperar — todas leem "o que tiver",
+conceito. Nenhuma skill (`fullcast-tech-lead`, `fullcast-developer`,
+`fullcast-developer-codereview`) hardcoda quais arquivos esperar — todas leem "o que tiver",
 seja na pasta ou na skill de stack.
 
 `config.yaml` completo (junta o que apareceu em §8 e aqui):
 
 ```yaml
 language: pt-BR
-methodology: aifullpeople     # default para features novas — ver §9
+methodology: fullcast     # default para features novas — ver §9
 human_in_the_loop: true       # aprovação obrigatória em cada transição — ver §15
 stack:
   primary_language: go
@@ -638,22 +678,34 @@ gates:
 ```json
 {
   "language": "pt-BR",
-  "default_methodology": "aifullpeople",
+  "default_methodology": "fullcast",
   "context_project": { "path": "context_project.md", "last_updated": "2026-09-05T12:00:00Z" },
-  "artifacts": {
-    "brief": { "path": ".aifullpeople/pm/brief.md", "status": "done" },
-    "prd": { "path": ".aifullpeople/pm/prd.md", "status": "done" }
-  },
+  "initiatives": [
+    {
+      "id": "I01",
+      "name": "Cadastro de usuário",
+      "status": "in_progress",
+      "branch": "initiative/I01-cadastro-usuario",
+      "artifacts": {
+        "brief": { "path": ".fullcast/I01-cadastro-usuario/pm/brief.md", "status": "done" },
+        "prd": { "path": ".fullcast/I01-cadastro-usuario/pm/prd.md", "status": "done" }
+      },
+      "feature_ids": ["F01"],
+      "changesfullcast": null,
+      "created_at": "2026-09-05T12:00:00Z"
+    }
+  ],
   "features": [
     {
       "id": "F01",
       "name": "Cadastro de usuário",
-      "methodology": "aifullpeople",
+      "methodology": "fullcast",
       "stage": "tasks",
+      "initiative_id": "I01",
       "artifacts": {
-        "design":   { "path": ".aifullpeople/features/F01-cadastro-usuario/tech-lead/design.md", "status": "done" },
-        "tasks":    { "path": ".aifullpeople/features/F01-cadastro-usuario/tech-lead/tasks.md", "status": "done" },
-        "contract": { "path": ".aifullpeople/features/F01-cadastro-usuario/tech-lead/contract.md", "status": "done" }
+        "design":   { "path": ".fullcast/I01-cadastro-usuario/features/F01-cadastro-usuario/tech-lead/design.md", "status": "done" },
+        "tasks":    { "path": ".fullcast/I01-cadastro-usuario/features/F01-cadastro-usuario/tech-lead/tasks.md", "status": "done" },
+        "contract": { "path": ".fullcast/I01-cadastro-usuario/features/F01-cadastro-usuario/tech-lead/contract.md", "status": "done" }
       },
       "estimated_difficulty": "medium",
       "real_difficulty": null,
@@ -675,13 +727,18 @@ gates:
 antes eu só tinha esses dois números dentro de `difficulty.md`/`tokens.md` em prosa, o que
 obrigaria o frontend da Fase 4 a fazer parsing de Markdown pra montar o board estimado-vs-real.
 Ficam também no `state.json`, que é dado estruturado de verdade. Isso deixa explícito que
-`.aifullpeople/report.md` (§10) é uma **renderização** desses mesmos dados pra leitura humana, não
+`.fullcast/report.md` (§10) é uma **renderização** desses mesmos dados pra leitura humana, não
 uma segunda fonte da verdade — se algum dia divergir, `state.json` que está certo.
+
+`initiatives[]` (§21) é o nível acima de `features[]` — cada feature carrega seu `initiative_id`
+de volta. O antigo `artifacts` de projeto (brief/PRD soltos no topo) foi descontinuado a favor de
+`initiatives[].artifacts`, porque agora um projeto pode ter vários brief/PRD em paralelo, um por
+initiative — não fazia mais sentido ter só um.
 
 ## 14. Roadmap
 
-1. **Fase 1** — `.agents/skills/` com `aifullpeople-init` (incluindo a criação/descoberta inicial
-   do `context_project.md`, §11), `aifullpeople-status`, e os 4 papéis (PM/Tech Lead/Developer/Evaluator),
+1. **Fase 1** — `.agents/skills/` com `fullcast-init` (incluindo a criação/descoberta inicial
+   do `context_project.md`, §11), `fullcast-status`, e os 4 papéis (PM/Tech Lead/Developer/Evaluator),
    evoluindo os 3 exemplogs, cada um com seus próprios `scripts/` quando aplicável (§5). `tech-lead`
    já nasce gerando `contract.md` (§7) junto de `design.md`/`tasks.md`, com o hard gate de
    cobertura de AC. `developer` já nasce rodando os 6 Gates (§8) por task + full-suite; `evaluator` já
@@ -689,7 +746,7 @@ uma segunda fonte da verdade — se algum dia divergir, `state.json` que está c
    aceite. Usar a skill `skill-creator` pra montar/validar a anatomia de cada uma (§5.1) em vez de
    confiar só na convenção descrita aqui. `guidelines/` com os 5 arquivos compartilhados; Go
    concreto vem da skill `golang-pro` (§5.2), não mais de `guidelines/go/`.
-2. **Fase 2** — `aifullpeople-set-methodology` + lock por feature (§9) valendo de verdade, mesmo
+2. **Fase 2** — `fullcast-set-methodology` + lock por feature (§9) valendo de verdade, mesmo
    com um único pack existindo — valida o mecanismo antes de precisar dele.
 3. **Fase 3** — validar a instalação real em Codex e Copilot (não só a convenção de pastas) e
    ajustar `SKILL.md`s específicos se algo não for reconhecido.
@@ -720,11 +777,11 @@ feature avançar e o próximo papel começar.
 **Fora do escopo do HiTL:** atualizações de `context_project.md` (documento vivo,
 acréscimo de fato descoberto, não uma decisão de design que precise de sign-off) e
 housekeeping de `state.json`/`report.md` que não represente uma entrega nova.
-`aifullpeople-init` e `aifullpeople-set-methodology` também ficam de fora — não
+`fullcast-init` e `fullcast-set-methodology` também ficam de fora — não
 produzem artefato de conteúdo.
 
 **Mecânica:** nenhuma API nova — é o mesmo mecanismo conversacional que já existia
-como override opcional ("pause between tasks" em `aifullpeople-developer`), só que
+como override opcional ("pause between tasks" em `fullcast-developer`), só que
 agora **ligado por padrão** em vez de opt-in. O papel apresenta o artefato, espera uma
 resposta explícita do usuário; se vierem pedidos de mudança, revisa e apresenta de
 novo — o `stage` só avança na resposta afirmativa.
@@ -747,7 +804,13 @@ pergunta-a-pergunta, HiTL continua exigindo aprovação do resultado final.
 
 ## 16. Decisões em aberto
 
-- **Sem `guidelines/security.md` dedicado:** `aifullpeople-developer-codereview` (§20) checa
+- ~~Sem `install.sh`~~ — **resolvido:** `install.sh` na raiz do repo (§2.1), testado copiando pra
+  um diretório novo. Só falta validar o fluxo completo (`install.sh` + `fullcast-init` +
+  `fullcast-pm`) num projeto de verdade, fora deste repo.
+- **Mecânica de merge-back do worktree não validada (§21.3):** `isolation: "worktree"` em toda
+  invocação de papel é a decisão tomada; o passo de trazer os commits de volta pra branch da
+  initiative antes do próximo papel começar ainda não rodou de ponta a ponta neste repo.
+- **Sem `guidelines/security.md` dedicado:** `fullcast-developer-codereview` (§20) checa
   segurança usando OWASP Top 10 genérico como baseline, porque não existe ainda um guideline
   próprio do framework pra isso (nem compartilhado, nem por stack). Fica pra quando/se fizer
   sentido dar o mesmo tratamento que demos a SOLID/anti-patterns/error-handling/naming/testing.
@@ -786,20 +849,20 @@ pergunta-a-pergunta, HiTL continua exigindo aprovação do resultado final.
   orquestra os sub-agentes (o próprio `tech-lead`? uma skill nova?). Fica pra Fase 1 decidir com
   base em quanto isso importa na prática pra vocês.
 - ~~Foundation Features e checagem de dependência (greenfield) não foram remapeadas~~ —
-  **resolvido na Fase 1:** ficou em `aifullpeople-tech-lead/references/design-and-tasks-rules.md`
+  **resolvido na Fase 1:** ficou em `fullcast-tech-lead/references/design-and-tasks-rules.md`
   Step 1 (dependency readiness + os 3 cenários de Foundation, checados contra `state.json`
   em vez de escanear o filesystem cru).
 - **Granularidade da reprovação do Evaluator:** quando `evaluator` reprova, ele reabre as tasks que falharam
   especificamente, ou cria tasks corretivas novas? A Fase 1 optou pelo caminho mais simples —
   `evaluator` só reporta os itens que falharam e qual task provavelmente é dona do gap, sem reabrir ou
-  criar task nenhuma automaticamente (`aifullpeople-evaluator/references/evaluation-checklist.md`,
+  criar task nenhuma automaticamente (`fullcast-evaluator/references/evaluation-checklist.md`,
   "On rejection"). Fica pra uma fase futura decidir se isso merece mais automação.
-- ~~`.aifullpeople/` e `context_project.md` vão pro git do projeto de destino, ou ficam
-  gitignored?~~ — **resolvido na Fase 1: versionar.** `aifullpeople-developer` comita
+- ~~`.fullcast/` e `context_project.md` vão pro git do projeto de destino, ou ficam
+  gitignored?~~ — **resolvido na Fase 1: versionar.** `fullcast-developer` comita
   `state.json` + o relatório da task junto do código, no mesmo commit por task (SKILL.md do
   `developer`, passo 3.8) — cada commit já é auto-documentado.
 - ~~Cache de comando de Gate descoberto~~ — **resolvido na Fase 1, ajustado na v8:** ordem de
-  resolução documentada em `aifullpeople-developer/references/execution-rules.md` ("Gate command
+  resolução documentada em `fullcast-developer/references/execution-rules.md` ("Gate command
   discovery"): `context_project.md` cacheado → `contract.md` da feature → skill de stack resolvida
   (`golang-pro` pra Go, ou `guidelines/<stack>/gates.md` quando `guidance_source: guidelines`) →
   descoberta direta no projeto (e só então cacheia de volta).
@@ -807,7 +870,7 @@ pergunta-a-pergunta, HiTL continua exigindo aprovação do resultado final.
   aprovação por brief/PRD/bundle do tech-lead/handoff do developer/veredito do Evaluator), nunca por
   task. Se algum projeto quiser aprovação por task também (mais rígido que o default), isso
   reaproveitaria o mesmo override `pause between tasks` que já existe em
-  `aifullpeople-developer/references/execution-rules.md` — não decidi se vale formalizar como
+  `fullcast-developer/references/execution-rules.md` — não decidi se vale formalizar como
   um segundo nível de `human_in_the_loop` (`"per_stage" | "per_task"`) ou deixar como está
   (override pontual, não config permanente).
 - **HiTL — vocabulário de aprovação não fechado:** os 4 papéis dizem "espere aprovação
@@ -842,11 +905,20 @@ um resumo estruturado de volta, não a transcrição inteira do trabalho.
 
 **Mecânica no Claude Code:** a sessão orquestradora dispara um subagente (`general-purpose` serve —
 não precisa de um tipo dedicado por papel) com um prompt que instrui: "invoque a skill
-`aifullpeople-<papel>` com esta entrada, e devolva só um resumo compacto (não a transcrição
+`fullcast-<papel>` com esta entrada, e devolva só um resumo compacto (não a transcrição
 inteira) com: o que foi produzido/alterado, os paths dos arquivos, resultado dos Gates quando
 aplicável, e o que falta aprovar." Isso espelha o padrão que vocês trouxeram do
 `implement-and-evaluate` (subagente por invocação de skill, retorno estruturado) — sem o loop de
 retry automático nem o journal elaborado daquele modelo, que são escopo de uma fase mais madura.
+
+**v13 — worktree sempre, não só quando há paralelismo (§21):** toda invocação acima passa a
+sempre incluir `isolation: "worktree"` (a Agent tool do Claude Code cria um worktree git isolado
+pra esse subagente) — deixou de ser algo pra reservar só pra quando duas invocações rodam ao
+mesmo tempo. Cada papel roda numa cópia isolada do repo, faz seus commits lá, e a sessão
+orquestradora é quem traz esse trabalho de volta pra branch da initiative antes de acionar o
+próximo papel — senão o próximo passo (que lê arquivos que o passo anterior acabou de escrever)
+não os enxergaria. Mecânica exata de merge-back ainda não validada em produção de verdade — ver
+nota de honestidade no §21.
 
 **Lock (§18) e subagente andam juntos:** é o subagente que adquire o lock no início do seu
 trabalho e libera no fim — nunca a sessão orquestradora, que pode estar coordenando vários
@@ -864,15 +936,15 @@ a mesma feature (ou o mesmo projeto, pro `pm`) ao mesmo tempo, o que corromperia
 geraria commits conflitantes.
 
 **Onde mora o lock:**
-- `.aifullpeople/.lock` — escopo de projeto, usado por `pm` (e implicitamente por `aifullpeople-
-  init`/`aifullpeople-set-methodology`, embora essas duas sejam rápidas o bastante pra o risco de
+- `.fullcast/.lock` — escopo de projeto, usado por `pm` (e implicitamente por `fullcast-
+  init`/`fullcast-set-methodology`, embora essas duas sejam rápidas o bastante pra o risco de
   colisão ser baixo — não critical path).
-- `.aifullpeople/features/<id>/.lock` — escopo de feature, usado por `tech-lead`, `developer`,
-  `evaluator`, e o `developer-fix-runner` (§19).
+- `.fullcast/<initiative-id>-<slug>/features/<id>/.lock` — escopo de feature,
+  usado por `tech-lead`, `developer`, `evaluator`, e o `developer-fix-runner` (§19).
 
 **Conteúdo:** uma linha, `<PID> <papel> <timestamp ISO>`.
 
-**Mecânica** (`aifullpeople-init/scripts/lock.sh`, script — não fica com o modelo porque envolve
+**Mecânica** (`fullcast-init/scripts/lock.sh`, script — não fica com o modelo porque envolve
 checagem de liveness de processo, fácil de errar na mão):
 - `acquire`: lock não existe → cria e segue. Lock existe, PID dono ainda vivo (`kill -0`) → aborta
   alto, avisa quem seguraria o lock e desde quando. Lock existe, PID morto → lock era de uma
@@ -882,13 +954,13 @@ checagem de liveness de processo, fácil de errar na mão):
   o próximo `acquire` já resolve sozinho via a checagem de liveness.
 
 **Nunca vai pro git:** `.lock` contém um PID de máquina local, sem sentido pra outra pessoa —
-`aifullpeople-init` já grava um `.gitignore` com `.aifullpeople/.lock` e
-`.aifullpeople/**/.lock` no primeiro `init`.
+`fullcast-init` já grava um `.gitignore` com `.fullcast/.lock` e
+`.fullcast/**/.lock` no primeiro `init`.
 
 **Limitação honesta:** `kill -0` é POSIX — funciona nos sandboxes Linux/macOS típicos de Claude
 Code/Codex/Copilot. Windows nativo sem camada POSIX não foi validado.
 
-## 19. `aifullpeople-developer-fix-runner`
+## 19. `fullcast-developer-fix-runner`
 
 Papel adicional, não um 5º papel do pipeline principal — só existe quando `evaluator` reprova uma
 feature. Adaptado (bem reduzido) de um modelo trazido pelo usuário; deixei de fora o que não se
@@ -934,7 +1006,7 @@ conflito de merge/PR (`Mode B`), `prd_progress.json` com múltiplos campos e reg
 criação automática de PR, orquestrador com circuit-breaker sem humano no loop. Esse framework
 ainda não tem um modelo de branch/PR — quando tiver, revisita.
 
-## 20. `aifullpeople-developer-codereview`
+## 20. `fullcast-developer-codereview`
 
 Gap real descoberto perguntando "o `developer`→`evaluator` é o nosso code review?" — a resposta
 foi não, e checando os arquivos de verdade: nada no pipeline consultava
@@ -945,7 +1017,7 @@ design. Sobrava um buraco: qualidade de código, no sentido de "o código honra 
 nossos próprios guidelines", não tinha quem checasse. Todos aqueles arquivos de guideline eram
 decorativos.
 
-**Não é um 5º papel independente** — mesma lógica do `fix-runner` (§19): é `aifullpeople-developer`
+**Não é um 5º papel independente** — mesma lógica do `fix-runner` (§19): é `fullcast-developer`
 (Miles Morales) fazendo outra passada, não uma persona nova. A independência de verdade vem de
 rodar como subagente próprio (§17) — contexto fresco, não da mesma conversa que escreveu o código.
 
@@ -975,3 +1047,81 @@ pra ciclos *pós-reprovação* do `evaluator` (§19) — nesse ponto a feature a
 achado aqui. Essa skill existe pro que ferramenta não pega: se o código honra a *filosofia* por
 trás de um guideline, não só a letra dele (lint pega variável não usada; não pega "essa função
 faz três coisas sem relação").
+
+## 21. Initiatives, branch/worktree, `changesfullcast`
+
+Gap real: o framework só tinha dois níveis — `features[]` e, dentro de cada uma, `tasks[]`. Não
+tinha nada acima de `features[]`, e o dono do projeto queria exatamente isso: "tem uma demanda
+maior que tem as features que tem as tasks" — várias demandas podendo coexistir (`posso ter vários
+desenvolvimentos`), cada uma potencialmente numa branch própria, com um jeito de fechar/arquivar
+uma demanda inteira quando todas as suas features terminam.
+
+### 21.1 O que é uma initiative
+
+Terceiro nível da hierarquia, acima de feature: **initiative → features → tasks**. Nome
+deliberadamente não é "epic" (pedido explícito do dono do projeto) — "initiative" comunica a
+mesma ideia ("uma demanda maior") sem herdar a bagagem de escopo que "epic" tem em Scrum. ID
+`I01, I02, ...` (mesma regra de sequência do `F01`, §5), pasta
+`.fullcast/<id>-<slug>/` contendo o `pm/` e o `features/` dessa demanda (§12).
+
+**Uma initiative por ciclo de PRD, por padrão.** Toda vez que `fullcast-pm` roda
+discovery→requirements e produz um PRD, isso já É uma initiative nova — sem entrevista extra, sem
+artefato a mais: reaproveita o fluxo que já existia (§6), só formaliza o agrupamento que sempre
+esteve implícito em "todas as features da seção 6 desse PRD". `pm` cria a entrada em
+`state.json.initiatives[]` na primeira vez que escreve `brief.md` (se a etapa Discovery rodar) ou,
+se ela for pulada, na primeira vez que escreve `prd.md`.
+
+**Caminho alternativo de criação — PRD importado.** Quando uma feature chega no `tech-lead` sem
+`initiative_id` (PRD trazido de fora — outra metodologia como BMAD, ou adicionado à mão em
+`state.json` sem passar pelo `pm`), é o `tech-lead` que cria a initiative na hora, perguntando um
+nome se não for óbvio a partir do PRD. Isso está documentado no `SKILL.md` de cada um dos dois
+papéis — não é lógica nova aqui, só o registro de onde ela mora.
+
+### 21.2 Branch — sugestão, nunca automática
+
+Ao criar uma initiative nova (nos dois caminhos do §21.1), antes de escrever qualquer arquivo:
+se a branch atual for uma branch-tronco (`main`, `master`, `develop`, `development`) e
+`config.yaml: git.suggest_branch` não for `false`, pergunta ao usuário se quer criar uma branch
+dedicada — sugestão `initiative/I01-<slug>`, mas o usuário pode dar outro nome, ou recusar e
+continuar na branch atual (`branch: null` na entrada da initiative — nada aqui força uma branch a
+existir). Nunca cria a branch sem perguntar primeiro. `git.suggest_branch: false` desliga a
+pergunta inteira, pra quem não quer esse fluxo.
+
+### 21.3 Worktree — sempre, não só quando há paralelismo
+
+Diferente da branch (sugestão pontual, uma vez por initiative), o worktree é **incondicional**:
+toda invocação de papel como subagente (§17) passa a sempre usar `isolation: "worktree"` quando a
+ferramenta orquestradora suportar (a Agent tool do Claude Code suporta). Cada papel — `pm`,
+`tech-lead`, `developer`, `evaluator`, e as passadas extras (`codereview`, `fix-runner`,
+`changesfullcast`) — roda isolado numa cópia própria do repo, commitando lá.
+
+**Honestidade sobre o que ainda não foi validado:** a mecânica exata de trazer os commits do
+worktree de volta pra branch da initiative antes do próximo papel começar (`pm` escreve o PRD no
+seu worktree; `tech-lead` precisa enxergar esse PRD no dele) não foi testada de ponta a ponta
+neste repo ainda — o mecanismo existe (a Agent tool documenta `isolation: "worktree"` com
+auto-limpeza quando não há mudança), mas o passo de merge-back explícito é responsabilidade da
+sessão orquestradora, e fica registrado aqui como o próximo teste real a rodar (mesmo espírito do
+§2 "Limitação honesta" e do §16).
+
+### 21.4 Fechando uma initiative — `changesfullcast`
+
+Quando `fullcast-evaluator` aprova uma feature e nota que era a **última** `feature_ids` da
+sua initiative ainda não `done` (Step 6.5 do seu `SKILL.md`), pergunta ali mesmo — no mesmo turno,
+não numa invocação futura — se quer gerar o resumo de fechamento. Três estados pra
+`initiatives[].status`:
+- `in_progress` — pelo menos uma feature falta.
+- `features_done` — todas as features terminaram, mas o humano disse "não agora" (ou ainda não foi
+  perguntado de novo); `fullcast-status` continua sinalizando isso até alguém fechar.
+- `archived` — `changesfullcast` foi gerado; a initiative está encerrada.
+
+`fullcast-changes` (skill própria, mesma lógica de "não é um papel novo" do
+`fix-runner`/`codereview`, §19/§20) lê o `evaluator/summary.md` de cada feature da initiative e
+escreve **na raiz do projeto**, fora de `.fullcast/` — igual ao papel que o `archive/` cumpre
+no OpenSpec, mas com o nome que o dono do projeto escolheu:
+
+```
+changesfullcast/<YYYY-MM-DD>-<initiative-id>-<slug>.md
+```
+
+Fica fora de `.fullcast/` de propósito: é o artefato feito pra ser lido por alguém que não
+conhece a estrutura interna do framework — um changelog de verdade, não mais um relatório interno.

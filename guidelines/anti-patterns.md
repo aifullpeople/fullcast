@@ -2,7 +2,7 @@
 
 Shared across every stack — these hold regardless of language. A stack's own
 `anti-patterns.md` adds what's specific to it (e.g. Go's "ignored error return"). Check
-both when `aifullpeople-developer` reviews its own work before a Gate run.
+both when `fullcast-developer` reviews its own work before a Gate run.
 
 ## God object / god function
 

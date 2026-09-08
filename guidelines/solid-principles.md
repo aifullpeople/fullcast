@@ -1,8 +1,8 @@
 # SOLID principles
 
 Shared across every stack — these are design-level concepts, not language syntax.
-Applied by `aifullpeople-tech-lead` when making Technical Decisions, and referenced by
-`aifullpeople-developer` during implementation. A stack folder may add a short note on
+Applied by `fullcast-tech-lead` when making Technical Decisions, and referenced by
+`fullcast-developer` during implementation. A stack folder may add a short note on
 how a principle looks in that language's idiom, but the principle itself belongs here.
 
 ## Single Responsibility
@@ -47,6 +47,6 @@ Gate is actually verifying.
 ## When these principles are in tension with each other
 
 They usually are, at the edges (Interface Segregation can push toward more interfaces
-than Dependency Inversion wants to inject). When they conflict, `aifullpeople-tech-lead`
+than Dependency Inversion wants to inject). When they conflict, `fullcast-tech-lead`
 should state the trade-off explicitly in `design.md`'s Technical Decisions table rather
 than silently picking one — that's exactly what that table exists for.

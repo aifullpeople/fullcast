@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://sdd-framework-aifullpeople/schema/state.schema.json",
-  "title": "aifullpeople state",
-  "description": "Documentation reference for .aifullpeople/state.json — not enforced by a script (architecture.md §5: reading/editing this file is model work via Read/Edit, not script work). Read this before hand-editing the file. state.json is the single source of truth; .aifullpeople/report.md is a rendering of it, never a second source (architecture.md §13).",
+  "$id": "https://sdd-framework-fullcast/schema/state.schema.json",
+  "title": "fullcast state",
+  "description": "Documentation reference for .fullcast/state.json — not enforced by a script (architecture.md §5: reading/editing this file is model work via Read/Edit, not script work). Read this before hand-editing the file. state.json is the single source of truth; .fullcast/report.md is a rendering of it, never a second source (architecture.md §13).",
   "type": "object",
-  "required": ["language", "default_methodology", "artifacts", "features", "history"],
+  "required": ["language", "default_methodology", "initiatives", "features", "history"],
   "additionalProperties": false,
   "properties": {
     "language": { "type": "string", "enum": ["en", "pt-BR"] },
     "default_methodology": { "type": "string" },
     "context_project": {
       "type": "object",
-      "description": "Pointer to context_project.md at the project root (architecture.md §11) — the file itself lives OUTSIDE .aifullpeople/ because it serves any methodology, not just aifullpeople.",
+      "description": "Pointer to context_project.md at the project root (architecture.md §11) — the file itself lives OUTSIDE .fullcast/ because it serves any methodology, not just fullcast.",
       "properties": {
         "path": { "type": "string" },
         "last_updated": { "type": "string", "format": "date-time" }
@@ -19,12 +19,17 @@
     },
     "artifacts": {
       "type": "object",
-      "description": "Project-level artifacts produced by the pm role.",
+      "description": "DEPRECATED since architecture.md v13 — a project can now hold several concurrent initiatives, so a single project-level brief/prd no longer makes sense. Superseded by initiatives[].artifacts. Kept only so pre-v13 projects don't fail validation; new projects should have this empty/absent.",
       "additionalProperties": false,
       "properties": {
         "brief": { "$ref": "#/definitions/artifact" },
         "prd": { "$ref": "#/definitions/artifact" }
       }
+    },
+    "initiatives": {
+      "type": "array",
+      "description": "The grouping level above features (architecture.md §21) — 'a bigger demand that has features that have tasks', in the project owner's own words. One PRD cycle = one initiative by default.",
+      "items": { "$ref": "#/definitions/initiative" }
     },
     "features": {
       "type": "array",
@@ -36,6 +41,50 @@
     }
   },
   "definitions": {
+    "initiative": {
+      "type": "object",
+      "required": ["id", "name", "status", "artifacts", "feature_ids"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^I[0-9]{2,}$",
+          "description": "I01, I02, ... Zero-padded, sequential, no gaps, global across the project (same rule as feature id). Folder: .fullcast/<id>-<kebab-name>/."
+        },
+        "name": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["in_progress", "features_done", "archived"],
+          "description": "in_progress: at least one feature not yet done. features_done: every feature_ids entry is stage 'done', but changesfullcast hasn't been generated yet (the human said 'not now' when evaluator asked, architecture.md §21). archived: changesfullcast generated — this initiative is closed."
+        },
+        "branch": {
+          "type": ["string", "null"],
+          "description": "Git branch this initiative's work happened on, if a dedicated one was created (architecture.md §21) — e.g. 'initiative/I01-cadastro-usuario'. null when the human declined the suggestion and stayed on whatever branch was current."
+        },
+        "artifacts": {
+          "type": "object",
+          "description": "Supersedes the deprecated project-level artifacts field — brief/prd now belong to the initiative that owns them.",
+          "additionalProperties": false,
+          "properties": {
+            "brief": { "$ref": "#/definitions/artifact" },
+            "prd": { "$ref": "#/definitions/artifact" }
+          }
+        },
+        "feature_ids": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^F[0-9]{2,}$" },
+          "description": "Every feature this initiative owns. A feature's own initiative_id field must point back here — the two are kept in sync by whoever adds the feature (pm normally; tech-lead in the imported-PRD fallback, architecture.md §21)."
+        },
+        "changesfullcast": {
+          "type": ["object", "null"],
+          "description": "null until generated. Set by fullcast-changes (architecture.md §21).",
+          "properties": {
+            "path": { "type": "string" },
+            "status": { "type": "string", "enum": ["pending", "done"] }
+          }
+        },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
     "artifact": {
       "type": "object",
       "required": ["path", "status"],
@@ -50,12 +99,17 @@
     },
     "feature": {
       "type": "object",
-      "required": ["id", "name", "methodology", "stage", "artifacts", "tasks"],
+      "required": ["id", "name", "methodology", "stage", "initiative_id", "artifacts", "tasks"],
       "properties": {
         "id": {
           "type": "string",
           "pattern": "^F[0-9]{2,}$",
-          "description": "F01, F02, ... Zero-padded, sequential, no gaps. Next ID = read the array, take the highest, add 1 (no script — architecture.md §5)."
+          "description": "F01, F02, ... Zero-padded, sequential, no gaps, global across the project (not reset per initiative). Next ID = read the array, take the highest, add 1 (no script — architecture.md §5)."
+        },
+        "initiative_id": {
+          "type": ["string", "null"],
+          "pattern": "^I[0-9]{2,}$",
+          "description": "The initiative this feature belongs to (architecture.md §21) — must also appear in that initiative's feature_ids. null only for features created before v13 that haven't been backfilled yet; every feature created from v13 on must set this."
         },
         "name": { "type": "string" },
         "methodology": {
@@ -93,7 +147,7 @@
           "type": "integer",
           "minimum": 0,
           "default": 0,
-          "description": "Incremented once per aifullpeople-developer-fix-runner run against this feature (architecture.md §19). Distinguishes original tasks.md tasks from post-rejection corrective passes — never folded into the tasks[] list."
+          "description": "Incremented once per fullcast-developer-fix-runner run against this feature (architecture.md §19). Distinguishes original tasks.md tasks from post-rejection corrective passes — never folded into the tasks[] list."
         },
         "tasks": {
           "type": "array",

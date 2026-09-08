@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://sdd-framework-aifullpeople/schema/config.schema.json",
-  "title": "aifullpeople config",
-  "description": "Documentation reference for .aifullpeople/config.yaml — not enforced by a script (architecture.md §5: reading/editing a small config is model work, not script work). Read this before hand-editing the file.",
+  "$id": "https://sdd-framework-fullcast/schema/config.schema.json",
+  "title": "fullcast config",
+  "description": "Documentation reference for .fullcast/config.yaml — not enforced by a script (architecture.md §5: reading/editing a small config is model work, not script work). Read this before hand-editing the file.",
   "type": "object",
   "required": ["language", "methodology", "stack"],
   "additionalProperties": false,
@@ -20,8 +20,8 @@
     },
     "methodology": {
       "type": "string",
-      "description": "Default methodology for NEW features. Never retroactive — each feature locks its own methodology at creation time in state.json (architecture.md §9). Today only \"aifullpeople\" exists.",
-      "default": "aifullpeople"
+      "description": "Default methodology for NEW features. Never retroactive — each feature locks its own methodology at creation time in state.json (architecture.md §9). Today only \"fullcast\" exists.",
+      "default": "fullcast"
     },
     "stack": {
       "type": "object",
@@ -61,6 +61,18 @@
         "tests": { "type": "boolean", "const": true, "default": true },
         "dead_code": { "type": "boolean", "default": true },
         "security": { "type": "boolean", "default": false, "description": "Proposed 7th gate (govulncheck for Go, etc.) — off by default until confirmed per project." }
+      }
+    },
+    "git": {
+      "type": "object",
+      "description": "Git workflow around initiatives (architecture.md §21) — separate from the Gates (§8), which check code, not branch/worktree hygiene.",
+      "additionalProperties": false,
+      "properties": {
+        "suggest_branch": {
+          "type": "boolean",
+          "default": true,
+          "description": "When a new initiative is created (pm, or tech-lead in the imported-PRD fallback) and the current branch is a trunk branch (main/master/develop/development), ask whether to create a dedicated branch for it (default suggestion: initiative/<id>-<slug>). Declining just keeps working on the current branch — this never forces a branch. Set false to skip the question entirely and always stay on whatever branch is current."
+        }
       }
     }
   }

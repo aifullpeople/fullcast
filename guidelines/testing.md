@@ -11,7 +11,7 @@ boundary (database, another service); fewer still end-to-end tests exercising th
 system. If a suite is inverted (mostly slow end-to-end tests, few unit tests), test runs
 get slow and flaky, and failures get harder to localize.
 
-`aifullpeople`'s `contract.md` (`docs/architecture.md` §7) sits above this pyramid, not
+`fullcast`'s `contract.md` (`docs/architecture.md` §7) sits above this pyramid, not
 inside it — its items are behavior promises at the feature's outer boundary, verified
 however that surface calls for (a unit test, an integration test, or a full E2E run
 depending on the surface). Don't confuse contract items with the pyramid's layers;
