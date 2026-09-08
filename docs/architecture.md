@@ -67,9 +67,9 @@
 > `--language pt-BR` — só `config.yaml` respeitava o idioma. Corrigido: os dois arquivos, no
 > idioma escolhido. Gap: `fullcast-init` perguntava pouco e silenciosamente assumia `en`/`go`
 > quando nada respondia — vira entrevista de verdade (mesmo padrão do `fullcast-pm`, uma
-> pergunta por vez) só quando o projeto é greenfield de verdade (sem código, sem
-> `context_project.md` populado); com código existente, a stack é inferida de sinais reais
-> (`go.mod`, `package.json`, etc.) em vez de perguntada. Novo `--project-type` no `init.sh` e
+> pergunta por vez), **sempre**, código existente ou não — o que muda com código presente é a
+> forma da pergunta (confirma o que foi detectado via `go.mod`/`package.json`/etc. em vez de
+> perguntar às cegas), nunca se ela é feita. Novo `--project-type` no `init.sh` e
 > `fullcast-init/references/bootstrap-interview.md` com o detalhe.
 
 ## 1. Objetivo
@@ -583,12 +583,12 @@ Isso vale igual pra qualquer metodologia que atuar sobre o mesmo repo — é por
 de `.fullcast/`.
 
 **Ciclo de vida:**
-- Criado por `fullcast-init`: se o projeto já tem código, infere a stack de sinais reais
-  (`go.mod`, `package.json`, etc. — `fullcast-init/references/bootstrap-interview.md`) e roda a
-  descoberta em duas camadas (baseline + ampla, como o `spec-writer` original já fazia) uma única
-  vez; se é greenfield de verdade (sem código, sem `context_project.md` populado), faz uma
-  entrevista curta (idioma, o que está construindo, tipo de projeto, stack) em vez de assumir os
-  defaults do script (`en`/`go`) em silêncio — o esqueleto escrito reflete essas respostas, no
+- Criado por `fullcast-init`: sempre roda uma entrevista curta (idioma, o que está sendo
+  construído, tipo de projeto, stack — `fullcast-init/references/bootstrap-interview.md`), código
+  existente ou não — nunca assume os defaults do script (`en`/`go`) em silêncio. Com código
+  existente, cada pergunta vira confirmação do que foi detectado (`go.mod`, `package.json`, etc.)
+  em vez de pergunta às cegas, e ainda roda a descoberta em duas camadas (baseline + ampla, como
+  o `spec-writer` original já fazia) uma única vez. O esqueleto escrito reflete as respostas, no
   idioma escolhido, não só `config.yaml`.
 - **Documento vivo, não estático:** Tech Lead e Developer podem *acrescentar* uma entrada quando
   descobrem um padrão novo que não estava documentado (ex.: uma convenção de nomenclatura que só
