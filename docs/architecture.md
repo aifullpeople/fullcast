@@ -69,8 +69,17 @@
 > quando nada respondia — vira entrevista de verdade (mesmo padrão do `fullcast-pm`, uma
 > pergunta por vez), **sempre**, código existente ou não — o que muda com código presente é a
 > forma da pergunta (confirma o que foi detectado via `go.mod`/`package.json`/etc. em vez de
-> perguntar às cegas), nunca se ela é feita. Novo `--project-type` no `init.sh` e
-> `fullcast-init/references/bootstrap-interview.md` com o detalhe.
+> perguntar às cegas), nunca se ela é feita.
+> v15: `context_project.md` ganha a estrutura completa que o dono do projeto trouxe como exemplo
+> (Overview, Stack, Arquitetura, Convenções, Domínio, Restrições) em vez do esqueleto de 2
+> seções que tinha antes. Arquitetura e Domínio ficam como placeholder — continuam sendo
+> pergunta do `tech-lead`/`pm`, não duplicadas aqui. A entrevista do `fullcast-init` cresce de 4
+> pra ~11 campos (4 obrigatórios + 7 opcionais com saída rápida — `bootstrap-interview.md`
+> atualizado). Mudança de mecanismo: o arquivo passa a ser escrito pelo modelo a partir de
+> `assets/context-template.<idioma>.md` (mesmo padrão de `design.md`/`brief.md`, §5.1) em vez de
+> um heredoc dentro do `init.sh` — o script volta a cuidar só de
+> `.fullcast/{config.yaml,state.json}`, mais alinhado com o critério do §5 de que redação de
+> conteúdo é trabalho do modelo, não de script.
 
 ## 1. Objetivo
 
@@ -583,13 +592,18 @@ Isso vale igual pra qualquer metodologia que atuar sobre o mesmo repo — é por
 de `.fullcast/`.
 
 **Ciclo de vida:**
-- Criado por `fullcast-init`: sempre roda uma entrevista curta (idioma, o que está sendo
-  construído, tipo de projeto, stack — `fullcast-init/references/bootstrap-interview.md`), código
-  existente ou não — nunca assume os defaults do script (`en`/`go`) em silêncio. Com código
-  existente, cada pergunta vira confirmação do que foi detectado (`go.mod`, `package.json`, etc.)
-  em vez de pergunta às cegas, e ainda roda a descoberta em duas camadas (baseline + ampla, como
-  o `spec-writer` original já fazia) uma única vez. O esqueleto escrito reflete as respostas, no
-  idioma escolhido, não só `config.yaml`.
+- Criado por `fullcast-init`: sempre roda uma entrevista (idioma, descrição, categoria, stack —
+  obrigatórias; versão, framework, build/pkg manager, banco, infra, convenções, público,
+  restrições — opcionais com saída rápida; tudo em `fullcast-init/references/
+  bootstrap-interview.md`), código existente ou não — nunca assume os defaults do script
+  (`en`/`go`) em silêncio. Com código existente, cada pergunta vira confirmação do que foi
+  detectado (`go.mod`, `package.json`, etc.) em vez de pergunta às cegas, e ainda roda a
+  descoberta em duas camadas (baseline + ampla, como o `spec-writer` original já fazia) uma
+  única vez. O arquivo em si é escrito pelo **modelo**, a partir de
+  `fullcast-init/assets/context-template.<idioma>.md` (mesmo padrão de `design.md`/`brief.md` —
+  §5.1), preenchido com as respostas — não pelo `init.sh`, que cuida só de
+  `.fullcast/{config.yaml,state.json}`. "Arquitetura" e "Domínio" ficam com o placeholder do
+  template — não são perguntados aqui, são do `tech-lead`/`pm` (ver abaixo).
 - **Documento vivo, não estático:** Tech Lead e Developer podem *acrescentar* uma entrada quando
   descobrem um padrão novo que não estava documentado (ex.: uma convenção de nomenclatura que só
   apareceu na feature 5). Nunca reescrevem o documento inteiro — só complementam, igual o `specs/`
