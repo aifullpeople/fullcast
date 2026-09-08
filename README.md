@@ -34,6 +34,10 @@ hoje só Go), os 5 guidelines compartilhados, e o schema de referência — mais
 `.claude/skills/` que o Claude Code precisa pra descobrir as skills. Não mexe em nada que já
 exista no projeto (código, git, etc.).
 
+**Codex já funciona sem passo nenhum a mais** — ele lê skill direto de `.agents/skills/<nome>/`,
+que é exatamente onde o `install.sh` já coloca tudo (confirmado testando com `npx skills add
+... -a codex`, que instala nesse mesmo caminho pro Codex).
+
 ### Opção B — `npx skills` (só as skills)
 
 Se você já usa o [`npx skills`](https://github.com/vercel-labs/skills) (o mesmo instalador do
@@ -41,19 +45,22 @@ Se você já usa o [`npx skills`](https://github.com/vercel-labs/skills) (o mesm
 
 ```sh
 git clone https://github.com/aifullpeople/fullcast.git
-npx skills add ./fullcast --all -a claude-code -y
+npx skills add ./fullcast --all -a claude-code -a codex -y
 ```
+
+(`-a claude-code` sozinho, ou `-a codex` sozinho, também funcionam — combine os agentes que
+você usa. `-a '*'` instala pra todos os agentes que a ferramenta detectar.)
 
 `--list` mostra as 11 skills disponíveis (as 10 `fullcast-*` + `golang-pro`) antes de instalar,
 ou escolha específicas:
 
 ```sh
 npx skills add ./fullcast --list
-npx skills add ./fullcast --skill fullcast-pm --skill fullcast-tech-lead -a claude-code
+npx skills add ./fullcast --skill fullcast-pm --skill fullcast-tech-lead -a codex
 ```
 
 Também dá pra apontar direto pro GitHub, sem clonar antes — `npx skills add
-aifullpeople/fullcast --all -a claude-code -y` — mas nesse caso ele reflete o que estiver
+aifullpeople/fullcast --all -a codex -y` — mas nesse caso ele reflete o que estiver
 pushado no repo remoto, não o seu checkout local.
 
 **Diferença pra Opção A:** `npx skills` só entende pacotes com `SKILL.md` — ele não sabe copiar
@@ -65,7 +72,7 @@ não existem — ele ainda funciona, só com menos contexto pra fundamentar os a
 
 ## Setup do projeto
 
-Abra o projeto de destino no Claude Code e rode:
+Abra o projeto de destino no seu agente (Claude Code, Codex, ...) e rode:
 
 ```
 fullcast-init
